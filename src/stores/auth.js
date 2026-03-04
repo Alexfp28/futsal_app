@@ -83,31 +83,75 @@ export const useAuthStore = defineStore("auth", {
       this.error = null;
 
       try {
+        console.log("Iniciando registro con:", { email, nombre, rol });
+
+        // Verificar que el rol sea válido
+        const validRoles = ["admin", "capitan", "jugador"];
+        if (!validRoles.includes(rol)) {
+          throw new Error(
+            `Rol inválido: ${rol}. Roles válidos: ${validRoles.join(", ")}`,
+          );
+        }
+
+        // Registrar con metadatos para que el trigger cree el perfil automáticamente
         const { data, error } = await supabase.auth.signUp({
           email,
           password,
-        });
-
-        if (error) throw error;
-
-        // Crear el perfil del usuario
-        if (data.user) {
-          const { error: profileError } = await supabase
-            .from("profiles")
-            .insert({
-              id: data.user.id,
+          options: {
+            data: {
               nombre,
               rol,
-              libre: rol === "jugador",
-            });
+            },
+          },
+        });
 
-          if (profileError) throw profileError;
+        console.log("Respuesta de signUp:", { data, error });
+
+        if (error) {
+          console.error("Error en signUp:", error);
+          throw error;
+        }
+
+        // Verificar si el usuario fue creado
+        if (!data.user) {
+          console.warn("Usuario no fue creado, verificando session:", data);
+          // Puede ser que el usuario ya existe o el email confirmation está habilitado
+          if (data.session === null) {
+            // El usuario fue creado pero requiere confirmación de email
+            return {
+              success: true,
+              message:
+                "Usuario creado. Por favor verifica tu correo electrónico para confirmar tu cuenta.",
+            };
+          }
+        } else {
+          console.log("Usuario creado con ID:", data.user.id);
+          // Verificar que el perfil se creó
+          try {
+            const { data: profile, error: profileError } = await supabase
+              .from("profiles")
+              .select("*")
+              .eq("id", data.user.id)
+              .single();
+
+            if (profileError) {
+              console.error("Error al verificar perfil:", profileError);
+            } else {
+              console.log("Perfil verificado:", profile);
+            }
+          } catch (e) {
+            console.warn("No se pudo verificar el perfil:", e);
+          }
         }
 
         return { success: true };
       } catch (error) {
-        this.error = error.message;
-        return { success: false, error: error.message };
+        console.error("Error completo en register:", error);
+        // Proporcionar mensaje más detallado
+        const errorMsg =
+          error.message || error.error_description || "Error desconocido";
+        this.error = errorMsg;
+        return { success: false, error: errorMsg };
       } finally {
         this.loading = false;
       }

@@ -83,15 +83,37 @@ const isJugadorLibre = computed(
 
 const saveProfile = async () => {
   try {
-    await supabase
+    // Preparar datos para enviar - convertir numero_camiseta a entero o null
+    const updates = {
+      nombre: form.value.nombre,
+      posicion: form.value.posicion || null,
+      numero_camiseta: form.value.numero_camiseta
+        ? parseInt(form.value.numero_camiseta, 10)
+        : null,
+    };
+
+    // Verificar que authStore.user.id existe
+    if (!authStore.user?.id) {
+      console.error("No hay usuario autenticado");
+      return;
+    }
+
+    const { data, error } = await supabase
       .from("profiles")
-      .update(form.value)
+      .update(updates)
       .eq("id", authStore.user.id);
 
-    perfil.value = { ...perfil.value, ...form.value };
+    if (error) {
+      console.error("Error de Supabase:", error);
+      throw error;
+    }
+
+    console.log("Perfil actualizado correctamente:", data);
+    perfil.value = { ...perfil.value, ...updates };
     editing.value = false;
   } catch (e) {
     console.error("Error al guardar:", e);
+    // Guardar localmente aunque haya error
     perfil.value = { ...perfil.value, ...form.value };
     editing.value = false;
   }
