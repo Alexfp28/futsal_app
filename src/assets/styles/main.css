@@ -1,0 +1,102 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Estilos base personalizados */
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply font-sans text-notion-text antialiased;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    @apply font-semibold tracking-tight;
+  }
+}
+
+/* Componentes personalizados */
+@layer components {
+  .btn-primary {
+    @apply bg-primary text-white px-4 py-2 rounded-notion font-medium 
+           hover:bg-primary-600 transition-colors duration-200
+           focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2;
+  }
+
+  .btn-secondary {
+    @apply bg-secondary text-notion-text px-4 py-2 rounded-notion font-medium 
+           hover:bg-secondary-600 transition-colors duration-200
+           focus:outline-none focus:ring-2 focus:ring-secondary focus:ring-offset-2;
+  }
+
+  .btn-outline {
+    @apply border border-notion-border bg-white text-notion-text px-4 py-2 rounded-notion font-medium 
+           hover:bg-notion-bg transition-colors duration-200
+           focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2;
+  }
+
+  .card {
+    @apply bg-notion-card rounded-notion border border-notion-border shadow-notion
+           hover:shadow-notion-hover transition-shadow duration-200;
+  }
+
+  .input {
+    @apply w-full px-3 py-2 border border-notion-border rounded-notion
+           focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent
+           placeholder:text-notion-muted;
+  }
+
+  .badge {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+  }
+
+  .badge-primary {
+    @apply badge bg-primary-100 text-primary-700;
+  }
+
+  .badge-secondary {
+    @apply badge bg-secondary-100 text-notion-text;
+  }
+
+  .badge-success {
+    @apply badge bg-green-100 text-green-700;
+  }
+
+  .badge-warning {
+    @apply badge bg-yellow-100 text-yellow-700;
+  }
+
+  .badge-danger {
+    @apply badge bg-red-100 text-red-700;
+  }
+
+  .link {
+    @apply text-primary hover:text-primary-600 underline-offset-4 hover:underline transition-colors;
+  }
+
+  .page-container {
+    @apply max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8;
+  }
+
+  .page-title {
+    @apply text-3xl font-bold text-notion-text mb-6;
+  }
+
+  .page-subtitle {
+    @apply text-lg text-notion-muted mb-8;
+  }
+}
+
+/* Utilidades personalizadas */
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
