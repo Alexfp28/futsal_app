@@ -206,8 +206,8 @@ router.beforeEach(async (to, from, next) => {
 
   const authStore = useAuthStore();
 
-  // Inicializar el store si no está inicializado
-  if (!authStore.user && !authStore.loading) {
+  // Si no está inicializado, inicializar y esperar a que termine
+  if (!authStore.initialized) {
     await authStore.initialize();
   }
 

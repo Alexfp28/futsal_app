@@ -7,14 +7,17 @@ const equipos = ref([]);
 const loading = ref(true);
 const showModal = ref(false);
 const editingEquipo = ref(null);
+const capitanes = ref([]);
 const form = ref({
   nombre: "",
   color_principal: "#164bf0",
   color_secundario: "#f6ec15",
+  capitan_id: "",
 });
 
 onMounted(async () => {
   await loadEquipos();
+  await loadCapitanes();
 });
 
 const loadEquipos = async () => {
@@ -35,6 +38,7 @@ const loadEquipos = async () => {
         nombre: "Los Tigres",
         color_principal: "#164bf0",
         color_secundario: "#f6ec15",
+        capitan_id: "abc123",
         profiles: [{ nombre: "Carlos García" }],
       },
       {
@@ -42,6 +46,7 @@ const loadEquipos = async () => {
         nombre: "Águilas FC",
         color_principal: "#dc2626",
         color_secundario: "#ffffff",
+        capitan_id: "def456",
         profiles: [{ nombre: "Miguel Torres" }],
       },
       {
@@ -49,6 +54,7 @@ const loadEquipos = async () => {
         nombre: "La Vall United",
         color_principal: "#16a34a",
         color_secundario: "#000000",
+        capitan_id: "ghi789",
         profiles: [{ nombre: "Pedro Martínez" }],
       },
     ];
@@ -57,16 +63,42 @@ const loadEquipos = async () => {
   }
 };
 
+const loadCapitanes = async () => {
+  try {
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("id, nombre")
+      .eq("rol", "capitan")
+      .order("nombre");
+
+    if (error) throw error;
+    capitanes.value = data || [];
+  } catch (e) {
+    // Datos de ejemplo si falla la carga
+    capitanes.value = [
+      { id: "abc123", nombre: "Carlos García" },
+      { id: "def456", nombre: "Miguel Torres" },
+      { id: "ghi789", nombre: "Pedro Martínez" },
+    ];
+  }
+};
+
 const openModal = (equipo = null) => {
   if (equipo) {
     editingEquipo.value = equipo;
-    form.value = { ...equipo };
+    form.value = {
+      nombre: equipo.nombre,
+      color_principal: equipo.color_principal,
+      color_secundario: equipo.color_secundario,
+      capitan_id: equipo.capitan_id || "",
+    };
   } else {
     editingEquipo.value = null;
     form.value = {
       nombre: "",
       color_principal: "#164bf0",
       color_secundario: "#f6ec15",
+      capitan_id: "",
     };
   }
   showModal.value = true;
@@ -79,13 +111,21 @@ const closeModal = () => {
 
 const saveEquipo = async () => {
   try {
+    // Preparar datos del formulario (convertir capitan_id vacío a null)
+    const equipoData = {
+      nombre: form.value.nombre,
+      color_principal: form.value.color_principal,
+      color_secundario: form.value.color_secundario,
+      capitan_id: form.value.capitan_id || null,
+    };
+
     if (editingEquipo.value) {
       await supabase
         .from("equipos")
-        .update(form.value)
+        .update(equipoData)
         .eq("id", editingEquipo.value.id);
     } else {
-      await supabase.from("equipos").insert(form.value);
+      await supabase.from("equipos").insert(equipoData);
     }
     await loadEquipos();
     closeModal();
@@ -264,6 +304,22 @@ const deleteEquipo = async (id) => {
                 class="w-full h-10 rounded-lg cursor-pointer"
               />
             </div>
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium text-notion-text mb-2"
+              >Capitán</label
+            >
+            <select v-model="form.capitan_id" class="input">
+              <option value="">Seleccionar capitán</option>
+              <option
+                v-for="capitan in capitanes"
+                :key="capitan.id"
+                :value="capitan.id"
+              >
+                {{ capitan.nombre }}
+              </option>
+            </select>
           </div>
 
           <div class="flex space-x-3 pt-4">
