@@ -92,15 +92,17 @@ CREATE INDEX IF NOT EXISTS gastos_fecha_idx ON gastos(fecha);
 -- =============================================
 -- TABLA: solicitudes_fichaje
 -- Solicitudes de jugadores para unirse a equipos
+-- O de equipos para invitar a jugadores (sistema bidireccional)
 -- =============================================
 CREATE TABLE IF NOT EXISTS solicitudes_fichaje (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   jugador_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
   equipo_id UUID NOT NULL REFERENCES equipos(id) ON DELETE CASCADE,
+  origen TEXT NOT NULL DEFAULT 'jugador' CHECK (origen IN ('jugador', 'equipo')),
   estado TEXT NOT NULL DEFAULT 'pendiente' CHECK (estado IN ('pendiente', 'aceptada', 'rechazada')),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  UNIQUE(jugador_id, equipo_id)
+  UNIQUE(jugador_id, equipo_id, origen)
 );
 
 -- =============================================
@@ -186,11 +188,19 @@ CREATE POLICY "Admins pueden gestionar gastos"
   );
 
 -- Políticas para solicitudes_fichaje
+-- El jugador puede ver:
+-- 1. Sus solicitudes enviadas (origen = 'jugador')
+-- 2. Las solicitudes recibidas de equipos (origen = 'equipo')
 CREATE POLICY "Jugadores pueden ver sus propias solicitudes"
   ON solicitudes_fichaje FOR SELECT
   TO authenticated
-  USING (jugador_id = auth.uid());
+  USING (
+    jugador_id = auth.uid()
+  );
 
+-- El capitán puede ver:
+-- 1. Solicitudes de jugadores hacia su equipo (origen = 'jugador')
+-- 2. Solicitudes enviadas por su equipo (origen = 'equipo')
 CREATE POLICY "Capitanes pueden ver solicitudes de su equipo"
   ON solicitudes_fichaje FOR SELECT
   TO authenticated
@@ -201,11 +211,29 @@ CREATE POLICY "Capitanes pueden ver solicitudes de su equipo"
     )
   );
 
+-- Jugadores pueden crear solicitudes enviadas por ellos
 CREATE POLICY "Jugadores pueden crear solicitudes"
   ON solicitudes_fichaje FOR INSERT
   TO authenticated
-  WITH CHECK (jugador_id = auth.uid());
+  WITH CHECK (
+    jugador_id = auth.uid() 
+    AND origen = 'jugador'
+  );
 
+-- Capitanes pueden crear solicitudes enviadas por su equipo
+CREATE POLICY "Capitanes pueden crear solicitudes desde equipo"
+  ON solicitudes_fichaje FOR INSERT
+  TO authenticated
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM equipos 
+      WHERE id = equipo_id AND capitan_id = auth.uid()
+    )
+    AND origen = 'equipo'
+  );
+
+-- Capitanes pueden actualizar solicitudes hacia su equipo (origen = 'jugador')
+-- Y pueden actualizar las solicitudes enviadas por su equipo (origen = 'equipo')
 CREATE POLICY "Capitanes pueden actualizar solicitudes de su equipo"
   ON solicitudes_fichaje FOR UPDATE
   TO authenticated

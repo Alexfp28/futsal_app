@@ -7,16 +7,22 @@ import {
   PencilIcon,
   CameraIcon,
   XMarkIcon,
+  CheckIcon,
+  XCircleIcon,
+  PaperAirplaneIcon,
+  InboxIcon,
 } from "@heroicons/vue/24/outline";
 
 const authStore = useAuthStore();
 const perfil = ref(null);
 const equipos = ref([]);
-const solicitudes = ref([]);
+const solicitudesEnviadas = ref([]);
+const solicitudesRecibidas = ref([]);
 const loading = ref(true);
 const editing = ref(false);
 const showSolicitarModal = ref(false);
 const uploading = ref(false);
+const processingSolicitud = ref(false);
 
 const form = ref({
   nombre: "",
@@ -79,13 +85,33 @@ const loadData = async () => {
 
     equipos.value = equiposData || [];
 
-    // Cargar solicitudes del jugador
-    const { data: solicitudesData } = await supabase
+    // Cargar solicitudes del jugador (enviadas por el jugador)
+    const { data: solicitudesEnviadasData, error: envError } = await supabase
       .from("solicitudes_fichaje")
-      .select("*, equipos(nombre)")
-      .eq("jugador_id", authStore.user.id);
+      .select(
+        "id, jugador_id, equipo_id, origen, estado, created_at, equipos(nombre)",
+      )
+      .eq("jugador_id", authStore.user.id)
+      .eq("origen", "jugador")
+      .order("created_at", { ascending: false });
 
-    solicitudes.value = solicitudesData || [];
+    if (envError)
+      console.error("Error cargando solicitudes enviadas:", envError);
+    solicitudesEnviadas.value = solicitudesEnviadasData || [];
+
+    // Cargar solicitudes recibidas de equipos
+    const { data: solicitudesRecibidasData, error: recError } = await supabase
+      .from("solicitudes_fichaje")
+      .select(
+        "id, jugador_id, equipo_id, origen, estado, created_at, equipos(nombre)",
+      )
+      .eq("jugador_id", authStore.user.id)
+      .eq("origen", "equipo")
+      .order("created_at", { ascending: false });
+
+    if (recError)
+      console.error("Error cargando solicitudes recibidas:", recError);
+    solicitudesRecibidas.value = solicitudesRecibidasData || [];
   } catch (e) {
     console.error("Error cargando datos:", e);
     // Datos de ejemplo
@@ -108,13 +134,44 @@ const loadData = async () => {
       { id: 2, nombre: "Águilas FC", color_principal: "#dc2626" },
       { id: 3, nombre: "La Vall United", color_principal: "#16a34a" },
     ];
-    solicitudes.value = [
-      { id: 1, estado: "pendiente", equipos: { nombre: "Los Tigres" } },
+    solicitudesEnviadas.value = [
+      {
+        id: 1,
+        estado: "pendiente",
+        origen: "jugador",
+        equipos: { nombre: "Los Tigres" },
+      },
+    ];
+    solicitudesRecibidas.value = [
+      {
+        id: 2,
+        estado: "pendiente",
+        origen: "equipo",
+        equipos: { nombre: "Águilas FC" },
+      },
     ];
   } finally {
     loading.value = false;
   }
 };
+
+// Solicitudes pendientes recibidas (solo mostrar en "Invitaciones de Equipos")
+const solicitudesRecibidasPendientes = computed(() =>
+  solicitudesRecibidas.value.filter((s) => s.estado === "pendiente"),
+);
+
+// Combinar solicitudes enviadas y recibidas procesadas (para "Mis Solicitudes")
+const todasLasSolicitudes = computed(() => {
+  const enviadas = solicitudesEnviadas.value.map((s) => ({
+    ...s,
+    tipo: "enviada",
+  }));
+  const recibidas = solicitudesRecibidas.value.map((s) => ({
+    ...s,
+    tipo: "recibida",
+  }));
+  return [...enviadas, ...recibidas];
+});
 
 const isJugadorLibre = computed(
   () => perfil.value?.libre === true || !perfil.value?.equipo_id,
@@ -288,6 +345,7 @@ const solicitarEquipo = async (equipoId) => {
     await supabase.from("solicitudes_fichaje").insert({
       jugador_id: authStore.user.id,
       equipo_id: equipoId,
+      origen: "jugador",
       estado: "pendiente",
     });
 
@@ -297,12 +355,84 @@ const solicitarEquipo = async (equipoId) => {
     console.error("Error al solicitar:", e);
     // Simular solicitud
     const equipo = equipos.value.find((e) => e.id === equipoId);
-    solicitudes.value.push({
+    solicitudesEnviadas.value.push({
       id: Date.now(),
+      origen: "jugador",
       estado: "pendiente",
       equipos: { nombre: equipo.nombre },
     });
     showSolicitarModal.value = false;
+  }
+};
+
+// Aceptar solicitud de un equipo
+const aceptarSolicitud = async (solicitud) => {
+  if (processingSolicitud.value) return;
+  processingSolicitud.value = true;
+
+  try {
+    // Actualizar estado de la solicitud
+    const { error: solicitudError } = await supabase
+      .from("solicitudes_fichaje")
+      .update({ estado: "aceptada" })
+      .eq("id", solicitud.id);
+
+    if (solicitudError) {
+      console.error("Error al actualizar solicitud:", solicitudError);
+      throw solicitudError;
+    }
+
+    // Actualizar el perfil del jugador con el equipo
+    const { error: perfilError } = await supabase
+      .from("profiles")
+      .update({
+        equipo_id: solicitud.equipo_id,
+        libre: false,
+      })
+      .eq("id", authStore.user.id);
+
+    if (perfilError) {
+      console.error("Error al actualizar perfil:", perfilError);
+      throw perfilError;
+    }
+
+    await loadData();
+  } catch (e) {
+    console.error("Error al aceptar solicitud:", e);
+    // Simular aceptación solo si no hay equipo ya asignado
+    if (!perfil.value?.equipo_id) {
+      solicitud.estado = "aceptada";
+      perfil.value.equipo_id = solicitud.equipo_id;
+      perfil.value.libre = false;
+    }
+  } finally {
+    processingSolicitud.value = false;
+  }
+};
+
+// Rechazar solicitud de un equipo
+const rechazarSolicitud = async (solicitud) => {
+  if (processingSolicitud.value) return;
+  processingSolicitud.value = true;
+
+  try {
+    const { error } = await supabase
+      .from("solicitudes_fichaje")
+      .update({ estado: "rechazada" })
+      .eq("id", solicitud.id);
+
+    if (error) {
+      console.error("Error al rechazar solicitud:", error);
+      throw error;
+    }
+
+    await loadData();
+  } catch (e) {
+    console.error("Error al rechazar solicitud:", e);
+    // Simular rechazo
+    solicitud.estado = "rechazada";
+  } finally {
+    processingSolicitud.value = false;
   }
 };
 
@@ -564,9 +694,69 @@ const cancelEditing = () => {
 
         <!-- Solicitudes -->
         <div class="lg:col-span-1">
+          <!-- Solicitudes Recibidas del Equipo (solo pendientes) -->
+          <div
+            v-if="solicitudesRecibidasPendientes.length > 0"
+            class="card p-6 mb-4"
+          >
+            <div class="flex items-center justify-between mb-4">
+              <div class="flex items-center space-x-2">
+                <InboxIcon class="w-5 h-5 text-primary" />
+                <h3 class="font-semibold text-notion-text">
+                  Invitaciones de Equipos
+                </h3>
+              </div>
+            </div>
+
+            <div class="space-y-3">
+              <div
+                v-for="solicitud in solicitudesRecibidasPendientes"
+                :key="solicitud.id"
+                class="p-3 bg-primary/5 border border-primary/20 rounded-lg"
+              >
+                <div class="flex items-center justify-between mb-2">
+                  <span class="font-medium text-notion-text text-sm">
+                    {{ solicitud.equipos?.nombre }}
+                  </span>
+                  <span
+                    :class="['badge text-xs', getEstadoClass(solicitud.estado)]"
+                  >
+                    {{ solicitud.estado }}
+                  </span>
+                </div>
+                <!-- Botones de acción para solicitudes pendientes del equipo -->
+                <div
+                  v-if="solicitud.estado === 'pendiente'"
+                  class="flex space-x-2 mt-2"
+                >
+                  <button
+                    @click="aceptarSolicitud(solicitud)"
+                    :disabled="processingSolicitud"
+                    class="flex-1 flex items-center justify-center space-x-1 bg-green-500 hover:bg-green-600 text-white text-xs py-1.5 px-2 rounded transition-colors disabled:opacity-50"
+                  >
+                    <CheckIcon class="w-3.5 h-3.5" />
+                    <span>Aceptar</span>
+                  </button>
+                  <button
+                    @click="rechazarSolicitud(solicitud)"
+                    :disabled="processingSolicitud"
+                    class="flex-1 flex items-center justify-center space-x-1 bg-red-500 hover:bg-red-600 text-white text-xs py-1.5 px-2 rounded transition-colors disabled:opacity-50"
+                  >
+                    <XCircleIcon class="w-3.5 h-3.5" />
+                    <span>Rechazar</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Mis Solicitudes a Equipos (enviadas + recibidas procesadas) -->
           <div class="card p-6">
             <div class="flex items-center justify-between mb-4">
-              <h3 class="font-semibold text-notion-text">Mis Solicitudes</h3>
+              <div class="flex items-center space-x-2">
+                <PaperAirplaneIcon class="w-5 h-5 text-notion-muted" />
+                <h3 class="font-semibold text-notion-text">Mis Solicitudes</h3>
+              </div>
               <button
                 v-if="isJugadorLibre"
                 @click="showSolicitarModal = true"
@@ -578,14 +768,28 @@ const cancelEditing = () => {
 
             <div class="space-y-3">
               <div
-                v-for="solicitud in solicitudes"
+                v-for="solicitud in todasLasSolicitudes"
                 :key="solicitud.id"
                 class="p-3 bg-notion-bg rounded-lg"
               >
                 <div class="flex items-center justify-between">
-                  <span class="font-medium text-notion-text text-sm">
-                    {{ solicitud.equipos?.nombre }}
-                  </span>
+                  <div class="flex items-center space-x-2">
+                    <span class="font-medium text-notion-text text-sm">
+                      {{ solicitud.equipos?.nombre }}
+                    </span>
+                    <span
+                      v-if="solicitud.tipo === 'recibida'"
+                      class="text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded"
+                    >
+                      Recibida
+                    </span>
+                    <span
+                      v-else
+                      class="text-xs bg-notion-muted/20 text-notion-muted px-1.5 py-0.5 rounded"
+                    >
+                      Enviada
+                    </span>
+                  </div>
                   <span
                     :class="['badge text-xs', getEstadoClass(solicitud.estado)]"
                   >
@@ -594,10 +798,10 @@ const cancelEditing = () => {
                 </div>
               </div>
               <div
-                v-if="solicitudes.length === 0"
+                v-if="todasLasSolicitudes.length === 0"
                 class="text-center py-4 text-notion-muted text-sm"
               >
-                No tienes solicitudes
+                No tienes solicitudes enviadas
               </div>
             </div>
           </div>
