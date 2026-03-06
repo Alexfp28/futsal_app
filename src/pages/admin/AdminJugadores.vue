@@ -1,12 +1,23 @@
 <script setup>
 import { ref, onMounted } from "vue";
 import { supabase } from "@/lib/supabase";
-import { PencilIcon, TrashIcon, UserIcon } from "@heroicons/vue/24/outline";
+import {
+  PencilIcon,
+  TrashIcon,
+  UserIcon,
+  ExclamationTriangleIcon,
+} from "@heroicons/vue/24/outline";
+import ConfirmDialog from "@/components/ConfirmDialog.vue";
 
 const jugadores = ref([]);
 const loading = ref(true);
+const error = ref(null);
 const filtroRol = ref("");
 const filtroLibre = ref("");
+
+// Estado para el diálogo de confirmación de eliminación
+const showDeleteDialog = ref(false);
+const jugadorToDelete = ref(null);
 
 const roles = ["admin", "capitan", "jugador"];
 
@@ -16,66 +27,36 @@ onMounted(async () => {
 
 const loadJugadores = async () => {
   loading.value = true;
+  error.value = null;
   try {
-    const { data, error } = await supabase
+    // Query corregida para obtener perfiles con su equipo relacionado
+    const { data, error: queryError } = await supabase
       .from("profiles")
-      .select("*, equipos(nombre)")
-      .order("nombre");
+      .select(
+        `
+        id,
+        nombre,
+        rol,
+        posicion,
+        numero_camiseta,
+        libre,
+        equipo_id,
+        equipos:equipos!profiles_equipo_id_fkey (id, nombre)
+      `,
+      )
+      .order("nombre", { ascending: true });
 
-    if (error) throw error;
-    jugadores.value = data || [];
+    if (queryError) throw queryError;
+
+    // Transformar los datos para que tengan el formato esperado
+    jugadores.value = (data || []).map((jugador) => ({
+      ...jugador,
+      equipos: jugador.equipos ? { nombre: jugador.equipos.nombre } : null,
+    }));
   } catch (e) {
-    // Datos de ejemplo
-    jugadores.value = [
-      {
-        id: 1,
-        nombre: "Carlos García",
-        rol: "capitan",
-        libre: false,
-        equipos: { nombre: "Los Tigres" },
-        posicion: "Ala",
-      },
-      {
-        id: 2,
-        nombre: "Miguel Torres",
-        rol: "capitan",
-        libre: false,
-        equipos: { nombre: "Águilas FC" },
-        posicion: "Portero",
-      },
-      {
-        id: 3,
-        nombre: "Pedro Martínez",
-        rol: "jugador",
-        libre: false,
-        equipos: { nombre: "La Vall United" },
-        posicion: "Cierre",
-      },
-      {
-        id: 4,
-        nombre: "Alejandro Sánchez",
-        rol: "jugador",
-        libre: true,
-        equipos: null,
-        posicion: "Portero",
-      },
-      {
-        id: 5,
-        nombre: "Bruno López",
-        rol: "jugador",
-        libre: true,
-        equipos: null,
-        posicion: "Ala",
-      },
-      {
-        id: 6,
-        nombre: "Admin Principal",
-        rol: "admin",
-        libre: false,
-        equipos: null,
-        posicion: null,
-      },
-    ];
+    console.error("Error al cargar jugadores:", e);
+    error.value = "Error al cargar los jugadores. Por favor, intenta de nuevo.";
+    jugadores.value = [];
   } finally {
     loading.value = false;
   }
@@ -106,15 +87,40 @@ const updateRol = async (jugador, nuevoRol) => {
   }
 };
 
-const deleteJugador = async (id) => {
-  if (confirm("¿Estás seguro de eliminar este jugador?")) {
-    try {
-      await supabase.from("profiles").delete().eq("id", id);
-      jugadores.value = jugadores.value.filter((j) => j.id !== id);
-    } catch (e) {
-      console.error("Error al eliminar:", e);
-    }
+// Abrir diálogo de confirmación de eliminación
+const confirmDeleteJugador = (jugador) => {
+  jugadorToDelete.value = jugador;
+  showDeleteDialog.value = true;
+};
+
+// Eliminar jugador después de confirmación
+const handleDeleteConfirm = async () => {
+  if (!jugadorToDelete.value) return;
+
+  try {
+    const { error: deleteError } = await supabase
+      .from("profiles")
+      .delete()
+      .eq("id", jugadorToDelete.value.id);
+
+    if (deleteError) throw deleteError;
+
+    // Eliminar de la lista local
+    jugadores.value = jugadores.value.filter(
+      (j) => j.id !== jugadorToDelete.value.id,
+    );
+  } catch (e) {
+    console.error("Error al eliminar:", e);
+  } finally {
+    showDeleteDialog.value = false;
+    jugadorToDelete.value = null;
   }
+};
+
+// Cancelar eliminación
+const handleDeleteCancel = () => {
+  showDeleteDialog.value = false;
+  jugadorToDelete.value = null;
 };
 </script>
 
@@ -155,6 +161,20 @@ const deleteJugador = async (id) => {
       <div
         class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"
       ></div>
+    </div>
+
+    <!-- Error message -->
+    <div v-else-if="error" class="card bg-red-50 border-red-200">
+      <div class="flex items-center gap-3 text-red-700">
+        <ExclamationTriangleIcon class="w-6 h-6" />
+        <p>{{ error }}</p>
+        <button
+          @click="loadJugadores"
+          class="ml-auto text-sm font-medium text-red-600 hover:text-red-800 underline"
+        >
+          Reintentar
+        </button>
+      </div>
     </div>
 
     <!-- Table -->
@@ -239,8 +259,9 @@ const deleteJugador = async (id) => {
               <td class="py-4 px-6">
                 <div class="flex items-center justify-end space-x-2">
                   <button
-                    @click="deleteJugador(jugador.id)"
+                    @click="confirmDeleteJugador(jugador)"
                     class="p-2 text-notion-muted hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                    title="Eliminar jugador"
                   >
                     <TrashIcon class="w-4 h-4" />
                   </button>
@@ -252,4 +273,17 @@ const deleteJugador = async (id) => {
       </div>
     </div>
   </div>
+
+  <!-- Diálogo de confirmación de eliminación -->
+  <ConfirmDialog
+    :show="showDeleteDialog"
+    title="Eliminar jugador"
+    :message="`¿Estás seguro de que deseas eliminar a ${jugadorToDelete?.nombre || 'este jugador'}? Esta acción no se puede deshacer.`"
+    confirm-text="Eliminar"
+    cancel-text="Cancelar"
+    type="danger"
+    @confirm="handleDeleteConfirm"
+    @cancel="handleDeleteCancel"
+    @close="handleDeleteCancel"
+  />
 </template>
