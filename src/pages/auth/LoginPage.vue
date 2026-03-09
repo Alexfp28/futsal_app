@@ -20,7 +20,7 @@ const handleLogin = async () => {
   const result = await authStore.login(email.value, password.value);
 
   if (result.success) {
-    const redirect = route.query.redirect || "/";
+    const redirect = route.query.redirect || "/intranet";
     router.push(redirect);
   } else {
     error.value = result.error;

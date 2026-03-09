@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed } from "vue";
+import { ref, computed, onMounted, onBeforeUnmount } from "vue";
 import { useRouter } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
 import {
@@ -13,16 +13,27 @@ const authStore = useAuthStore();
 
 const isMenuOpen = ref(false);
 const isUserMenuOpen = ref(false);
+const userMenuRef = ref(null);
 
 const navigation = [
+  { name: "Panel interno", href: "/intranet", requiresAuth: true },
   { name: "Identidad", href: "/identidad" },
   { name: "Equipos", href: "/equipos" },
   { name: "Jugadores Libres", href: "/jugadores-libres" },
   { name: "Reglamento", href: "/reglamento" },
   { name: "Código de Conducta", href: "/codigo-conducta" },
   { name: "Economía", href: "/economia" },
-  { name: "Calendario", href: "/calendario" },
+  // Solo visible para usuarios no autenticados (hay calendario interno)
+  { name: "Calendario", href: "/calendario", hideWhenAuth: true },
 ];
+
+const visibleNavigation = computed(() =>
+  navigation.filter(
+    (item) =>
+      (!item.requiresAuth || authStore.isAuthenticated) &&
+      !(item.hideWhenAuth && authStore.isAuthenticated),
+  ),
+);
 
 const userMenuItems = computed(() => {
   const items = [];
@@ -32,6 +43,10 @@ const userMenuItems = computed(() => {
 
     if (authStore.isAdmin) {
       items.push({ name: "Panel Admin", href: "/admin" });
+    }
+
+    if (authStore.isCapitan || authStore.isAdmin) {
+      items.push({ name: "Panel Capitán", href: "/capitan" });
     }
 
     if (authStore.isCapitan || authStore.isAdmin) {
@@ -50,6 +65,16 @@ const toggleUserMenu = () => {
   isUserMenuOpen.value = !isUserMenuOpen.value;
 };
 
+const handleClickOutside = (event) => {
+  if (
+    isUserMenuOpen.value &&
+    userMenuRef.value &&
+    !userMenuRef.value.contains(event.target)
+  ) {
+    isUserMenuOpen.value = false;
+  }
+};
+
 const handleLogout = async () => {
   await authStore.logout();
   isUserMenuOpen.value = false;
@@ -59,6 +84,14 @@ const handleLogout = async () => {
 const closeMenu = () => {
   isMenuOpen.value = false;
 };
+
+onMounted(() => {
+  document.addEventListener("click", handleClickOutside);
+});
+
+onBeforeUnmount(() => {
+  document.removeEventListener("click", handleClickOutside);
+});
 </script>
 
 <template>
@@ -87,9 +120,9 @@ const closeMenu = () => {
         </div>
 
         <!-- Desktop Navigation -->
-        <div class="hidden lg:flex items-center gap-1">
+        <div class="hidden lg:flex items-center gap-1 p-2">
           <router-link
-            v-for="item in navigation"
+            v-for="item in visibleNavigation"
             :key="item.name"
             :to="item.href"
             class="px-3 py-2 text-sm font-medium text-notion-muted hover:text-notion-text hover:bg-notion-bg rounded-lg transition-colors whitespace-nowrap"
@@ -102,7 +135,7 @@ const closeMenu = () => {
         <!-- User Menu / Auth Buttons -->
         <div class="hidden lg:flex items-center gap-4">
           <template v-if="authStore.isAuthenticated">
-            <div class="relative">
+            <div class="relative" ref="userMenuRef">
               <button
                 @click="toggleUserMenu"
                 class="flex items-center gap-2 px-3 py-2 text-sm font-medium text-notion-text hover:bg-notion-bg rounded-lg transition-colors"
@@ -173,7 +206,7 @@ const closeMenu = () => {
     >
       <div class="px-4 py-3 space-y-1">
         <router-link
-          v-for="item in navigation"
+          v-for="item in visibleNavigation"
           :key="item.name"
           :to="item.href"
           class="block px-3 py-2 text-sm font-medium text-notion-muted hover:text-notion-text hover:bg-notion-bg rounded-lg whitespace-nowrap"

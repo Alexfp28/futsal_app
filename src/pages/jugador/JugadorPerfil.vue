@@ -396,6 +396,14 @@ const aceptarSolicitud = async (solicitud) => {
       throw perfilError;
     }
 
+    // Agregar a plantilla como titular por defecto (si no existe ya)
+    await supabase.from("plantilla").insert({
+      equipo_id: solicitud.equipo_id,
+      jugador_id: authStore.user.id,
+      es_titular: true,
+      posicion_plantilla: 0,
+    });
+
     await loadData();
   } catch (e) {
     console.error("Error al aceptar solicitud:", e);

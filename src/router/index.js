@@ -27,6 +27,7 @@ import CapitanEquipo from "@/pages/capitan/CapitanEquipo.vue";
 
 // Páginas de jugador
 import JugadorPerfil from "@/pages/jugador/JugadorPerfil.vue";
+import IntranetPage from "@/pages/intranet/IntranetPage.vue";
 
 const routes = [
   // Rutas públicas
@@ -76,7 +77,10 @@ const routes = [
     path: "/calendario",
     name: "calendario",
     component: CalendarioPage,
-    meta: { title: "Calendario - FutSal La Vall" },
+    meta: {
+      title: "Calendario - FutSal La Vall",
+      guest: true,
+    },
   },
 
   // Rutas de autenticación
@@ -179,6 +183,18 @@ const routes = [
     },
   },
 
+  // Ruta de intranet (home interna para usuarios autenticados)
+  {
+    path: "/intranet",
+    name: "intranet",
+    component: IntranetPage,
+    meta: {
+      title: "Intranet - FutSal La Vall",
+      requiresAuth: true,
+      roles: ["admin", "capitan", "jugador"],
+    },
+  },
+
   // Ruta 404
   {
     path: "/:pathMatch(.*)*",
@@ -201,8 +217,10 @@ const router = createRouter({
 
 // Guard de navegación para autenticación y roles
 router.beforeEach(async (to, from, next) => {
+  const meta = to.meta || {};
+
   // Actualizar título de la página
-  document.title = to.meta.title || "FutSal La Vall";
+  document.title = meta.title || "FutSal La Vall";
 
   const authStore = useAuthStore();
 
@@ -212,21 +230,21 @@ router.beforeEach(async (to, from, next) => {
   }
 
   // Verificar si la ruta requiere autenticación
-  if (to.meta.requiresAuth) {
+  if (meta.requiresAuth) {
     if (!authStore.isAuthenticated) {
       return next({ name: "login", query: { redirect: to.fullPath } });
     }
 
     // Verificar roles permitidos
-    const allowedRoles = to.meta.roles || [];
+    const allowedRoles = meta.roles || [];
     if (allowedRoles.length > 0 && !allowedRoles.includes(authStore.userRole)) {
       return next({ name: "home" });
     }
   }
 
   // Verificar si la ruta es solo para invitados (no autenticados)
-  if (to.meta.guest && authStore.isAuthenticated) {
-    return next({ name: "home" });
+  if (meta.guest && authStore.isAuthenticated) {
+    return next({ name: "intranet" });
   }
 
   next();

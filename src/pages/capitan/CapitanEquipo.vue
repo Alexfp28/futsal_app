@@ -102,78 +102,34 @@ const loadData = async () => {
 
     // Cargar jugadores del equipo con su estado en plantilla
     if (equipoData) {
-      // Usar la vista plantilla_detallada que hace el JOIN correctamente
-      const { data: plantillaDetallada, error: plantillaError } = await supabase
-        .from("plantilla_detallada")
+      // Cargamos primero todos los perfiles asignados al equipo (fuente de verdad)
+      const { data: jugadoresData, error: jugadoresError } = await supabase
+        .from("profiles")
         .select("*")
         .eq("equipo_id", equipoData.id);
 
-      if (plantillaError) {
-        console.error("Error al cargar plantilla_detallada:", plantillaError);
-        // Fallback: método original si la vista no está disponible
-        const { data: jugadoresData } = await supabase
-          .from("profiles")
+      if (jugadoresError) {
+        console.error("Error al cargar jugadores:", jugadoresError);
+        jugadores.value = [];
+      } else if (jugadoresData?.length) {
+        // Cargamos la información de la plantilla para estos jugadores
+        const { data: plantillaData } = await supabase
+          .from("plantilla")
           .select("*")
           .eq("equipo_id", equipoData.id);
 
-        if (jugadoresData?.length) {
-          const { data: plantillaData } = await supabase
-            .from("plantilla")
-            .select("*")
-            .eq("equipo_id", equipoData.id);
-
-          jugadores.value = jugadoresData.map((j) => {
-            const posPlantilla = plantillaData?.find(
-              (p) => p.jugador_id === j.id,
-            );
-            return {
-              ...j,
-              es_titular: posPlantilla ? posPlantilla.es_titular : true,
-              posicion_plantilla: posPlantilla?.posicion_plantilla || 0,
-            };
-          });
-        } else {
-          jugadores.value = [];
-        }
-      } else if (plantillaDetallada?.length) {
-        // Mapear datos de la vista directamente
-        jugadores.value = plantillaDetallada.map((p) => ({
-          id: p.jugador_id,
-          nombre: p.nombre_jugador,
-          posicion: p.posicion_jugador,
-          numero_camiseta: p.numero_camiseta,
-          foto_url: p.foto_url,
-          es_titular: p.es_titular,
-          posicion_plantilla: p.posicion_plantilla,
-          equipo_id: p.equipo_id,
-        }));
+        jugadores.value = jugadoresData.map((j) => {
+          const posPlantilla = plantillaData?.find(
+            (p) => p.jugador_id === j.id,
+          );
+          return {
+            ...j,
+            es_titular: posPlantilla ? posPlantilla.es_titular : true,
+            posicion_plantilla: posPlantilla?.posicion_plantilla || 0,
+          };
+        });
       } else {
-        // No hay registros en plantilla, cargar solo perfiles
-        const { data: jugadoresData } = await supabase
-          .from("profiles")
-          .select("*")
-          .eq("equipo_id", equipoData.id);
-
-        if (jugadoresData?.length) {
-          // Verificar si existen en plantilla
-          const { data: plantillaData } = await supabase
-            .from("plantilla")
-            .select("*")
-            .eq("equipo_id", equipoData.id);
-
-          jugadores.value = jugadoresData.map((j) => {
-            const posPlantilla = plantillaData?.find(
-              (p) => p.jugador_id === j.id,
-            );
-            return {
-              ...j,
-              es_titular: posPlantilla ? posPlantilla.es_titular : true,
-              posicion_plantilla: posPlantilla?.posicion_plantilla || 0,
-            };
-          });
-        } else {
-          jugadores.value = [];
-        }
+        jugadores.value = [];
       }
 
       // Cargar solicitudes de fichaje pendientes (solo las enviadas por jugadores, origen = "jugador")
@@ -312,7 +268,7 @@ const loadData = async () => {
 
 // Enviar petición de fichaje al jugador
 const enviarPeticionFichaje = async (jugador) => {
-  if (!equipo.value) return;
+  if (!authStore.isCapitan || !equipo.value) return;
 
   enviandoPeticion.value = true;
   try {
@@ -348,6 +304,7 @@ const enviarPeticionFichaje = async (jugador) => {
 
 // Aceptar solicitud de un jugador que quiere unirse
 const aceptarSolicitud = async (solicitud) => {
+  if (!authStore.isCapitan) return;
   try {
     // Actualizar estado de la solicitud
     await supabase
@@ -361,12 +318,12 @@ const aceptarSolicitud = async (solicitud) => {
       .update({ equipo_id: equipo.value.id, libre: false })
       .eq("id", solicitud.jugador_id);
 
-    // Agregar a plantilla como suplente por defecto
+    // Agregar a plantilla como titular por defecto
     await supabase.from("plantilla").insert({
       equipo_id: equipo.value.id,
       jugador_id: solicitud.jugador_id,
-      es_titular: false,
-      posicion_plantilla: 99,
+      es_titular: true,
+      posicion_plantilla: 0,
     });
 
     // Recargar datos
@@ -393,6 +350,7 @@ const aceptarSolicitud = async (solicitud) => {
 
 // Rechazar solicitud
 const rechazarSolicitud = async (solicitud) => {
+  if (!authStore.isCapitan) return;
   // Usar diálogo de confirmación en lugar de confirm()
   showConfirm(
     STRING.DIALOGS.CONFIRM_RECHAZO,
@@ -447,7 +405,7 @@ const enviarInvitacion = async (jugador) => {
 
 // Cambiar estado de titular/suplente
 const cambiarEstadoPlantilla = async (jugador, esTitular) => {
-  if (jugador.rol === "capitan") return;
+  if (!authStore.isCapitan || jugador.rol === "capitan") return;
 
   try {
     if (equipo.value) {
@@ -483,7 +441,7 @@ const cambiarEstadoPlantilla = async (jugador, esTitular) => {
   }
 };
 
-const expulsarJugador = async (jugador) => {
+const expulsarJugador = (jugador) => {
   if (jugador.rol === "capitan") {
     // Mostrar diálogo informativo de error
     showInfo(
@@ -494,37 +452,37 @@ const expulsarJugador = async (jugador) => {
     return;
   }
 
-  // Usar diálogo de confirmación en lugar de confirm()
+  // Usar diálogo de confirmación
   showConfirm(
     STRING.DIALOGS.CONFIRM_EXPULSION,
     STRING.EQUIPO.EXPULSION_JUGADOR(jugador.nombre),
     "danger",
     async () => {
       try {
-        await supabase
+        const { error: expulsarError } = await supabase
           .from("profiles")
           .update({ equipo_id: null, libre: true })
           .eq("id", jugador.id);
+        if (expulsarError) throw expulsarError;
 
         // Eliminar de plantilla
         if (equipo.value) {
-          await supabase
+          const { error: plantillaError } = await supabase
             .from("plantilla")
             .delete()
             .eq("equipo_id", equipo.value.id)
             .eq("jugador_id", jugador.id);
+          if (plantillaError) throw plantillaError;
         }
 
         await loadData();
       } catch (e) {
         console.error(STRING.ERRORS.EXPULSAR_JUGADOR, e);
-        // Simular expulsión
-        jugadores.value = jugadores.value.filter((j) => j.id !== jugador.id);
-        jugadoresLibres.value.push({
-          ...jugador,
-          equipo_id: null,
-          libre: true,
-        });
+        showInfo(
+          STRING.DIALOGS.ERROR,
+          e?.message || STRING.ERRORS.EXPULSAR_JUGADOR,
+          "danger",
+        );
       }
     },
   );
@@ -538,7 +496,7 @@ const expulsarJugador = async (jugador) => {
         <h1 class="page-title">Mi Equipo</h1>
         <p class="page-subtitle">Gestiona los jugadores de tu equipo</p>
       </div>
-      <div class="flex items-center space-x-3">
+      <div v-if="authStore.isCapitan" class="flex items-center space-x-3">
         <!-- Botón de solicitudes pendientes -->
         <button
           v-if="solicitudesPendientes.length > 0"
@@ -651,7 +609,7 @@ const expulsarJugador = async (jugador) => {
                 }}</span>
               </div>
             </div>
-            <div class="flex items-center space-x-2">
+            <div v-if="authStore.isCapitan" class="flex items-center space-x-2">
               <!-- Botón para mover a suplente -->
               <button
                 v-if="jugador.rol !== 'capitan'"
@@ -718,7 +676,7 @@ const expulsarJugador = async (jugador) => {
                 }}</span>
               </div>
             </div>
-            <div class="flex items-center space-x-2">
+            <div v-if="authStore.isCapitan" class="flex items-center space-x-2">
               <!-- Botón para mover a titular -->
               <button
                 @click="cambiarEstadoPlantilla(jugador, true)"
@@ -790,7 +748,7 @@ const expulsarJugador = async (jugador) => {
                 </p>
               </div>
             </div>
-            <div class="flex items-center space-x-2">
+            <div v-if="authStore.isCapitan" class="flex items-center space-x-2">
               <button
                 @click="aceptarSolicitud(solicitud)"
                 class="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
@@ -864,6 +822,7 @@ const expulsarJugador = async (jugador) => {
               </div>
             </div>
             <button
+              v-if="authStore.isCapitan"
               @click="enviarPeticionFichaje(jugador)"
               :disabled="enviandoPeticion"
               class="btn-primary text-xs py-1 px-3 disabled:opacity-50"
