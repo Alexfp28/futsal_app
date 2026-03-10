@@ -1,12 +1,110 @@
 <script setup>
-import { ref, onMounted } from "vue";
+import { ref, computed, onMounted } from "vue";
 import { supabase } from "@/lib/supabase";
+import { useAuthStore } from "@/stores/auth";
+
+const authStore = useAuthStore();
+const canManage = computed(() => authStore.isAdmin || authStore.isCapitan);
 
 const loading = ref(true);
 const error = ref("");
 const rows = ref([]);
 const showLegend = ref(false);
 
+// ── Panel lateral de registro de resultado ──────────────────────────────────
+const showPanel = ref(false);
+const equipos = ref([]);
+const saving = ref(false);
+const saveError = ref("");
+const saveSuccess = ref(false);
+
+const form = ref({
+  equipo_local_id: "",
+  equipo_visitante_id: "",
+  goles_local: 0,
+  goles_visitante: 0,
+  fecha: new Date().toISOString().slice(0, 16),
+  lugar: "Polideportivo Municipal",
+});
+
+const equiposVisitante = computed(() =>
+  equipos.value.filter((e) => e.id !== form.value.equipo_local_id)
+);
+
+const fetchEquipos = async () => {
+  const { data } = await supabase
+    .from("equipos")
+    .select("id, nombre, color_principal")
+    .order("nombre");
+  equipos.value = data || [];
+};
+
+const openPanel = async () => {
+  saveError.value = "";
+  saveSuccess.value = false;
+  form.value = {
+    equipo_local_id: "",
+    equipo_visitante_id: "",
+    goles_local: 0,
+    goles_visitante: 0,
+    fecha: new Date().toISOString().slice(0, 16),
+    lugar: "Polideportivo Municipal",
+  };
+  if (equipos.value.length === 0) await fetchEquipos();
+  showPanel.value = true;
+};
+
+const closePanel = () => {
+  showPanel.value = false;
+};
+
+const handleSave = async () => {
+  saveError.value = "";
+  saveSuccess.value = false;
+
+  if (!form.value.equipo_local_id || !form.value.equipo_visitante_id) {
+    saveError.value = "Selecciona ambos equipos.";
+    return;
+  }
+  if (form.value.equipo_local_id === form.value.equipo_visitante_id) {
+    saveError.value = "Los equipos local y visitante no pueden ser el mismo.";
+    return;
+  }
+  if (!form.value.fecha) {
+    saveError.value = "Indica la fecha del partido.";
+    return;
+  }
+
+  saving.value = true;
+  try {
+    const { error: insertError } = await supabase.from("partidos").insert({
+      equipo_local_id: form.value.equipo_local_id,
+      equipo_visitante_id: form.value.equipo_visitante_id,
+      goles_local: Number(form.value.goles_local),
+      goles_visitante: Number(form.value.goles_visitante),
+      fecha: new Date(form.value.fecha).toISOString(),
+      lugar: form.value.lugar || "Polideportivo Municipal",
+      estado: "jugado",
+    });
+
+    if (insertError) throw insertError;
+
+    saveSuccess.value = true;
+    await fetchClasificacion();
+
+    setTimeout(() => {
+      saveSuccess.value = false;
+      closePanel();
+    }, 1800);
+  } catch (e) {
+    console.error("Error guardando resultado:", e);
+    saveError.value = "No se pudo guardar el resultado. Inténtalo de nuevo.";
+  } finally {
+    saving.value = false;
+  }
+};
+
+// ── Carga de clasificación ──────────────────────────────────────────────────
 const fetchClasificacion = async () => {
   loading.value = true;
   error.value = "";
@@ -21,8 +119,6 @@ const fetchClasificacion = async () => {
 
     rows.value = (data || []).map((row) => {
       const partidosJugados = row.partidos_jugados ?? 0;
-
-      // Derivar algunos campos si aún no existen en la vista
       const ganados = row.ganados ?? null;
       const empatados = row.empatados ?? null;
       const perdidos = row.perdidos ?? null;
@@ -89,30 +185,46 @@ onMounted(fetchClasificacion);
     <div v-else>
       <!-- Sin datos -->
       <div
-        v-if="rows.length === 0"
+        v-if="rows.length === 0 && !canManage"
         class="px-3 py-6 text-center text-sm text-notion-muted"
       >
         Todavía no hay datos de clasificación disponibles.
       </div>
 
-      <div v-else class="space-y-4">
-        <!-- Encabezado y botón de leyenda -->
-        <div class="flex items-center justify-between gap-3">
+      <div class="space-y-4">
+        <!-- Encabezado y botones -->
+        <div class="flex items-center justify-between gap-3 flex-wrap">
           <h3 class="text-sm font-semibold text-notion-text">
             Clasificación
           </h3>
-          <button
-            type="button"
-            class="inline-flex items-center gap-1 rounded-full border border-notion-border px-3 py-1 text-xs font-medium text-notion-muted hover:text-notion-text hover:bg-notion-bg transition-colors"
-            @click="showLegend = !showLegend"
-          >
-            <span>{{ showLegend ? "Ocultar leyenda" : "Más información" }}</span>
-            <span
-              class="inline-flex h-4 w-4 items-center justify-center rounded-full bg-notion-bg text-[10px]"
+          <div class="flex items-center gap-2 flex-wrap">
+            <!-- Botón leyenda -->
+            <button
+              type="button"
+              class="inline-flex items-center gap-1 rounded-full border border-notion-border px-3 py-1 text-xs font-medium text-notion-muted hover:text-notion-text hover:bg-notion-bg transition-colors"
+              @click="showLegend = !showLegend"
             >
-              i
-            </span>
-          </button>
+              <span>{{ showLegend ? "Ocultar leyenda" : "Más información" }}</span>
+              <span
+                class="inline-flex h-4 w-4 items-center justify-center rounded-full bg-notion-bg text-[10px]"
+              >
+                i
+              </span>
+            </button>
+
+            <!-- Botón registrar resultado (solo admin/capitán) -->
+            <button
+              v-if="canManage"
+              type="button"
+              class="inline-flex items-center gap-1.5 rounded-full bg-primary px-3 py-1 text-xs font-medium text-white hover:bg-primary-600 transition-colors shadow-sm"
+              @click="openPanel"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clip-rule="evenodd" />
+              </svg>
+              Registrar resultado
+            </button>
+          </div>
         </div>
 
         <!-- Leyenda de campos -->
@@ -174,7 +286,7 @@ onMounted(fetchClasificacion);
         </div>
 
         <!-- Vista móvil: tarjetas -->
-        <div class="md:hidden space-y-3">
+        <div v-if="rows.length > 0" class="md:hidden space-y-3">
           <div
             v-for="(row, index) in rows"
             :key="row.id"
@@ -270,7 +382,7 @@ onMounted(fetchClasificacion);
         </div>
 
         <!-- Vista escritorio / tablet: tabla completa -->
-        <div class="hidden md:block overflow-x-auto">
+        <div v-if="rows.length > 0" class="hidden md:block overflow-x-auto">
           <table class="min-w-full table-auto text-sm">
             <thead>
               <tr class="bg-notion-bg text-notion-muted">
@@ -355,8 +467,270 @@ onMounted(fetchClasificacion);
             </tbody>
           </table>
         </div>
+
+        <!-- Mensaje vacío para admin/capitan -->
+        <div
+          v-if="rows.length === 0 && canManage"
+          class="px-3 py-6 text-center text-sm text-notion-muted"
+        >
+          Todavía no hay datos de clasificación disponibles. Registra el primer resultado con el botón de arriba.
+        </div>
       </div>
     </div>
+
+    <!-- ── Overlay backdrop ─────────────────────────────────────────────── -->
+    <Teleport to="body">
+      <Transition name="backdrop">
+        <div
+          v-if="showPanel"
+          class="fixed inset-0 bg-black/30 z-40 backdrop-blur-sm"
+          @click="closePanel"
+        />
+      </Transition>
+
+      <!-- ── Slide-over panel ──────────────────────────────────────────── -->
+      <Transition name="slideover">
+        <div
+          v-if="showPanel"
+          class="fixed inset-y-0 right-0 z-50 flex w-full max-w-md flex-col bg-white shadow-2xl"
+          @click.stop
+        >
+          <!-- Header del panel -->
+          <div class="flex items-center justify-between border-b border-notion-border px-6 py-4">
+            <div>
+              <h2 class="text-base font-semibold text-notion-text">
+                Registrar resultado
+              </h2>
+              <p class="text-xs text-notion-muted mt-0.5">
+                El resultado actualizará la clasificación automáticamente.
+              </p>
+            </div>
+            <button
+              type="button"
+              class="rounded-full p-1.5 text-notion-muted hover:bg-notion-bg hover:text-notion-text transition-colors"
+              @click="closePanel"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
+              </svg>
+            </button>
+          </div>
+
+          <!-- Cuerpo del formulario -->
+          <div class="flex-1 overflow-y-auto px-6 py-6 space-y-6">
+
+            <!-- Marcador visual del partido -->
+            <div class="rounded-xl border border-notion-border bg-notion-bg px-4 py-4">
+              <p class="text-[10px] font-semibold uppercase tracking-wider text-notion-muted mb-3 text-center">
+                Resultado del partido
+              </p>
+              <div class="flex items-center gap-3">
+                <!-- Equipo local marcador -->
+                <div class="flex-1 text-center">
+                  <div
+                    class="mx-auto mb-1.5 w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold text-white"
+                    :style="{ backgroundColor: equipos.find(e => e.id === form.equipo_local_id)?.color_principal || '#164bf0' }"
+                  >
+                    {{ equipos.find(e => e.id === form.equipo_local_id)?.nombre?.charAt(0) || 'L' }}
+                  </div>
+                  <p class="text-[11px] text-notion-muted truncate max-w-[90px] mx-auto">
+                    {{ equipos.find(e => e.id === form.equipo_local_id)?.nombre || 'Local' }}
+                  </p>
+                </div>
+                <!-- Marcador -->
+                <div class="flex items-center gap-1.5 shrink-0">
+                  <span class="text-2xl font-bold text-notion-text tabular-nums w-8 text-center">{{ form.goles_local }}</span>
+                  <span class="text-notion-muted font-light text-lg">—</span>
+                  <span class="text-2xl font-bold text-notion-text tabular-nums w-8 text-center">{{ form.goles_visitante }}</span>
+                </div>
+                <!-- Equipo visitante marcador -->
+                <div class="flex-1 text-center">
+                  <div
+                    class="mx-auto mb-1.5 w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold text-white"
+                    :style="{ backgroundColor: equipos.find(e => e.id === form.equipo_visitante_id)?.color_principal || '#6b7280' }"
+                  >
+                    {{ equipos.find(e => e.id === form.equipo_visitante_id)?.nombre?.charAt(0) || 'V' }}
+                  </div>
+                  <p class="text-[11px] text-notion-muted truncate max-w-[90px] mx-auto">
+                    {{ equipos.find(e => e.id === form.equipo_visitante_id)?.nombre || 'Visitante' }}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Formulario -->
+            <form @submit.prevent="handleSave" class="space-y-5">
+              <!-- Equipo local -->
+              <div>
+                <label class="block text-xs font-medium text-notion-text mb-1.5">
+                  Equipo local
+                </label>
+                <select
+                  v-model="form.equipo_local_id"
+                  class="input text-sm"
+                  required
+                >
+                  <option value="" disabled>Selecciona el equipo local…</option>
+                  <option
+                    v-for="equipo in equipos"
+                    :key="equipo.id"
+                    :value="equipo.id"
+                  >
+                    {{ equipo.nombre }}
+                  </option>
+                </select>
+              </div>
+
+              <!-- Equipo visitante -->
+              <div>
+                <label class="block text-xs font-medium text-notion-text mb-1.5">
+                  Equipo visitante
+                </label>
+                <select
+                  v-model="form.equipo_visitante_id"
+                  class="input text-sm"
+                  required
+                >
+                  <option value="" disabled>Selecciona el equipo visitante…</option>
+                  <option
+                    v-for="equipo in equiposVisitante"
+                    :key="equipo.id"
+                    :value="equipo.id"
+                  >
+                    {{ equipo.nombre }}
+                  </option>
+                </select>
+              </div>
+
+              <!-- Goles -->
+              <div class="grid grid-cols-2 gap-4">
+                <div>
+                  <label class="block text-xs font-medium text-notion-text mb-1.5">
+                    Goles local
+                  </label>
+                  <input
+                    v-model.number="form.goles_local"
+                    type="number"
+                    min="0"
+                    max="99"
+                    class="input text-sm"
+                    required
+                  />
+                </div>
+                <div>
+                  <label class="block text-xs font-medium text-notion-text mb-1.5">
+                    Goles visitante
+                  </label>
+                  <input
+                    v-model.number="form.goles_visitante"
+                    type="number"
+                    min="0"
+                    max="99"
+                    class="input text-sm"
+                    required
+                  />
+                </div>
+              </div>
+
+              <!-- Fecha -->
+              <div>
+                <label class="block text-xs font-medium text-notion-text mb-1.5">
+                  Fecha y hora del partido
+                </label>
+                <input
+                  v-model="form.fecha"
+                  type="datetime-local"
+                  class="input text-sm"
+                  required
+                />
+              </div>
+
+              <!-- Lugar -->
+              <div>
+                <label class="block text-xs font-medium text-notion-text mb-1.5">
+                  Lugar
+                </label>
+                <input
+                  v-model="form.lugar"
+                  type="text"
+                  placeholder="Polideportivo Municipal"
+                  class="input text-sm"
+                />
+              </div>
+
+              <!-- Feedback de error -->
+              <div
+                v-if="saveError"
+                class="rounded-lg bg-red-50 border border-red-200 px-3 py-2.5 text-xs text-red-700"
+              >
+                {{ saveError }}
+              </div>
+
+              <!-- Feedback de éxito -->
+              <div
+                v-if="saveSuccess"
+                class="rounded-lg bg-green-50 border border-green-200 px-3 py-2.5 text-xs text-green-700 flex items-center gap-2"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" viewBox="0 0 20 20" fill="currentColor">
+                  <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                </svg>
+                Resultado guardado. Clasificación actualizada.
+              </div>
+
+              <!-- Botones -->
+              <div class="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  class="btn-outline flex-1 text-sm"
+                  @click="closePanel"
+                  :disabled="saving"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  class="btn-primary flex-1 text-sm flex items-center justify-center gap-2"
+                  :disabled="saving"
+                >
+                  <svg
+                    v-if="saving"
+                    class="animate-spin h-4 w-4"
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                  >
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 22 6.477 22 12h-4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  {{ saving ? "Guardando…" : "Guardar resultado" }}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
   </div>
 </template>
 
+<style scoped>
+/* Backdrop fade */
+.backdrop-enter-active,
+.backdrop-leave-active {
+  transition: opacity 0.25s ease;
+}
+.backdrop-enter-from,
+.backdrop-leave-to {
+  opacity: 0;
+}
+
+/* Slide-over from right */
+.slideover-enter-active,
+.slideover-leave-active {
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.slideover-enter-from,
+.slideover-leave-to {
+  transform: translateX(100%);
+}
+</style>
