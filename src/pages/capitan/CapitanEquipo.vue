@@ -13,6 +13,7 @@ import {
   ClockIcon,
   UsersIcon,
   PencilSquareIcon,
+  CameraIcon,
 } from "@heroicons/vue/24/outline";
 
 const authStore = useAuthStore();
@@ -32,7 +33,12 @@ const editForm = ref({
   nombre: "",
   color_principal: "#164bf0",
   color_secundario: "#f6ec15",
+  escudo_url: "",
 });
+
+const escudoPreview = ref(null);
+const escudoFile = ref(null);
+const uploadingEscudo = ref(false);
 
 const openEditPanel = () => {
   if (equipo.value) {
@@ -40,13 +46,18 @@ const openEditPanel = () => {
       nombre: equipo.value.nombre || "",
       color_principal: equipo.value.color_principal || "#164bf0",
       color_secundario: equipo.value.color_secundario || "#f6ec15",
+      escudo_url: equipo.value.escudo_url || "",
     };
+    escudoPreview.value = equipo.value.escudo_url || null;
+    escudoFile.value = null;
   }
   showEditPanel.value = true;
 };
 
 const closeEditPanel = () => {
   showEditPanel.value = false;
+  escudoFile.value = null;
+  escudoPreview.value = null;
 };
 
 // Variables para diálogos de confirmación
@@ -131,7 +142,9 @@ const loadData = async () => {
         nombre: equipoData.nombre || "",
         color_principal: equipoData.color_principal || "#164bf0",
         color_secundario: equipoData.color_secundario || "#f6ec15",
+        escudo_url: equipoData.escudo_url || "",
       };
+      escudoPreview.value = equipoData.escudo_url || null;
     }
 
     // Cargar jugadores del equipo con su estado en plantilla
@@ -229,6 +242,7 @@ const loadData = async () => {
       nombre: "Los Tigres",
       color_principal: "#164bf0",
       color_secundario: "#f6ec15",
+      escudo_url: null,
     };
     jugadores.value = [
       {
@@ -526,13 +540,26 @@ const saveEquipo = async () => {
   if (!equipo.value) return;
   savingEquipo.value = true;
   try {
+    let finalEscudoUrl = editForm.value.escudo_url;
+
+    // Subir nueva foto si hay
+    if (escudoFile.value) {
+      const uploadedUrl = await uploadEscudo(equipo.value.id);
+      if (uploadedUrl) {
+        finalEscudoUrl = uploadedUrl;
+      }
+    }
+
+    const updates = {
+      nombre: editForm.value.nombre,
+      color_principal: editForm.value.color_principal,
+      color_secundario: editForm.value.color_secundario,
+      escudo_url: finalEscudoUrl || null,
+    };
+
     const { error } = await supabase
       .from("equipos")
-      .update({
-        nombre: editForm.value.nombre,
-        color_principal: editForm.value.color_principal,
-        color_secundario: editForm.value.color_secundario,
-      })
+      .update(updates)
       .eq("id", equipo.value.id);
 
     if (error) throw error;
@@ -540,9 +567,7 @@ const saveEquipo = async () => {
     // Actualizar el equipo local para reflejar cambios inmediatamente
     equipo.value = {
       ...equipo.value,
-      nombre: editForm.value.nombre,
-      color_principal: editForm.value.color_principal,
-      color_secundario: editForm.value.color_secundario,
+      ...updates,
     };
 
     showInfo(
@@ -550,6 +575,7 @@ const saveEquipo = async () => {
       "Los datos del equipo se han guardado correctamente.",
       "success",
     );
+    closeEditPanel();
   } catch (e) {
     console.error("Error al guardar equipo:", e);
     showInfo(
@@ -560,6 +586,104 @@ const saveEquipo = async () => {
   } finally {
     savingEquipo.value = false;
   }
+};
+
+// ==================== LÓGICA DE ESCUDO ====================
+// Manejar selección de archivo de imagen
+const handleEscudoChange = (event) => {
+  const file = event.target.files[0];
+  if (file) {
+    if (!file.type.startsWith("image/")) {
+      showInfo("Error", "Por favor selecciona un archivo de imagen válido", "danger");
+      return;
+    }
+
+    if (file.size > 2 * 1024 * 1024) {
+      showInfo("Error", "La imagen no puede superar los 2MB", "danger");
+      return;
+    }
+
+    escudoFile.value = file;
+    // Crear preview
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      escudoPreview.value = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  }
+};
+
+// Subir imagen a Supabase Storage
+const uploadEscudo = async (equipoId) => {
+  if (!escudoFile.value) return null;
+
+  uploadingEscudo.value = true;
+  try {
+    const bucketName = "escudos-equipo";
+
+    // Intentar crear el bucket si no existe
+    try {
+      const { data: buckets } = await supabase.storage.listBuckets();
+      const bucketExists = buckets?.some((b) => b.name === bucketName);
+
+      if (!bucketExists) {
+        await supabase.storage.createBucket(bucketName, {
+          public: true,
+        });
+      }
+    } catch (bucketError) {
+      console.warn("No se pudo verificar/crear bucket de escudos", bucketError);
+    }
+
+    const fileExt = escudoFile.value.name.split(".").pop();
+    const fileName = `equipo-${equipoId}-${Date.now()}.${fileExt}`;
+
+    const { data, error } = await supabase.storage
+      .from(bucketName)
+      .upload(fileName, escudoFile.value, {
+        upsert: true,
+        contentType: escudoFile.value.type,
+      });
+
+    if (error) {
+      console.error("Error en upload:", error);
+      throw error;
+    }
+
+    const { data: urlData, error: urlError } = supabase.storage
+      .from(bucketName)
+      .getPublicUrl(fileName);
+
+    if (urlError) {
+      throw urlError;
+    }
+
+    return urlData.publicUrl;
+  } catch (e) {
+    console.error("Error subiendo escudo:", e);
+    showInfo("Error", "Error al subir el escudo. Por favor, inténtalo de nuevo.", "danger");
+    return null;
+  } finally {
+    uploadingEscudo.value = false;
+  }
+};
+
+// Eliminar escudo de equipo
+const eliminarEscudo = async () => {
+  if (
+    equipo.value?.escudo_url &&
+    equipo.value.escudo_url.includes("escudos-equipo")
+  ) {
+    try {
+      const fileName = equipo.value.escudo_url.split("/").pop();
+      await supabase.storage.from("escudos-equipo").remove([fileName]);
+    } catch (e) {
+      console.warn("No se pudo eliminar el escudo anterior:", e);
+    }
+  }
+  escudoFile.value = null;
+  escudoPreview.value = null;
+  editForm.value.escudo_url = "";
 };
 </script>
 
@@ -617,7 +741,14 @@ const saveEquipo = async () => {
       <div class="card p-6 mb-8">
         <div class="flex items-center space-x-4">
           <div
-            class="w-20 h-20 rounded-xl flex items-center justify-center text-white font-bold text-3xl"
+            v-if="equipo?.escudo_url"
+            class="w-20 h-20 rounded-xl overflow-hidden border-2 border-white shadow-md flex-shrink-0"
+          >
+            <img :src="equipo.escudo_url" alt="Escudo del equipo" class="w-full h-full object-cover" />
+          </div>
+          <div
+            v-else
+            class="w-20 h-20 rounded-xl flex items-center justify-center text-white font-bold text-3xl flex-shrink-0"
             :style="{ backgroundColor: equipo?.color_principal || '#164bf0' }"
           >
             {{ equipo?.nombre?.charAt(0) || "?" }}
@@ -962,20 +1093,61 @@ const saveEquipo = async () => {
             <!-- Preview en vivo del escudo -->
             <div class="rounded-xl border border-notion-border bg-notion-bg px-4 py-4">
               <p class="text-[10px] font-semibold uppercase tracking-wider text-notion-muted mb-3 text-center">
-                Vista previa
+                Logotipo del equipo
               </p>
-              <div class="flex items-center gap-4 justify-center">
-                <div
-                  class="w-16 h-16 rounded-xl flex items-center justify-center text-white font-bold text-2xl transition-colors"
-                  :style="{ backgroundColor: editForm.color_principal }"
-                >
-                  {{ editForm.nombre?.charAt(0) || "?" }}
+              
+              <div class="flex flex-col items-center justify-center gap-3">
+                <div class="relative group">
+                  <div
+                    v-if="escudoPreview"
+                    class="w-24 h-24 rounded-xl overflow-hidden border-4 border-white shadow-lg relative"
+                  >
+                    <img
+                      :src="escudoPreview"
+                      alt="Logo Preview"
+                      class="w-full h-full object-cover transition-opacity group-hover:opacity-75"
+                    />
+                  </div>
+                  <div
+                    v-else
+                    class="w-24 h-24 rounded-xl flex items-center justify-center text-white font-bold text-4xl border-4 border-white shadow-lg transition-colors group-hover:opacity-80"
+                    :style="{ backgroundColor: editForm.color_principal }"
+                  >
+                    {{ editForm.nombre?.charAt(0) || "?" }}
+                  </div>
+                  
+                  <!-- Botón para seleccionar foto -->
+                  <label
+                    for="escudo-input"
+                    class="absolute bottom-[-8px] right-[-8px] w-8 h-8 bg-primary hover:bg-primary/90 rounded-full flex items-center justify-center text-white cursor-pointer shadow-lg transition-colors z-10"
+                    title="Cambiar logotipo"
+                  >
+                    <CameraIcon class="w-4 h-4" />
+                  </label>
+                  <input
+                    id="escudo-input"
+                    type="file"
+                    accept="image/*"
+                    class="hidden"
+                    @change="handleEscudoChange"
+                  />
+                  <!-- Botón para eliminar foto -->
+                  <button
+                    v-if="escudoPreview"
+                    type="button"
+                    @click="eliminarEscudo"
+                    class="absolute top-[-8px] right-[-8px] w-6 h-6 bg-red-500 hover:bg-red-600 rounded-full flex items-center justify-center text-white shadow-lg transition-colors z-10"
+                    title="Eliminar logotipo"
+                  >
+                    <XMarkIcon class="w-3.5 h-3.5" />
+                  </button>
                 </div>
-                <div>
+                
+                <div class="text-center">
                   <p class="font-semibold text-notion-text">
                     {{ editForm.nombre || "Nombre del equipo" }}
                   </p>
-                  <div class="flex items-center gap-2 mt-1.5">
+                  <div class="flex items-center justify-center gap-2 mt-1.5">
                     <div
                       class="w-4 h-4 rounded-full border border-notion-border transition-colors"
                       :style="{ backgroundColor: editForm.color_principal }"
@@ -986,6 +1158,9 @@ const saveEquipo = async () => {
                     ></div>
                     <span class="text-xs text-notion-muted">Colores del equipo</span>
                   </div>
+                  <p class="text-[10px] text-notion-muted mt-2">
+                    JPG, PNG o GIF (Max 2MB)
+                  </p>
                 </div>
               </div>
             </div>
@@ -1044,9 +1219,9 @@ const saveEquipo = async () => {
                   class="btn-primary flex-1 text-sm flex items-center justify-center gap-2"
                   :disabled="savingEquipo"
                 >
-                  <ArrowPathIcon v-if="savingEquipo" class="w-4 h-4 animate-spin" />
+                  <ArrowPathIcon v-if="savingEquipo || uploadingEscudo" class="w-4 h-4 animate-spin" />
                   <CheckIcon v-else class="w-4 h-4" />
-                  {{ savingEquipo ? "Guardando..." : "Guardar cambios" }}
+                  {{ (savingEquipo || uploadingEscudo) ? "Guardando..." : "Guardar cambios" }}
                 </button>
               </div>
             </form>
