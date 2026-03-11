@@ -100,16 +100,11 @@ const partidosPorFecha = computed(() => {
   return partidosFiltrados.value.filter((p) => p.fecha?.startsWith(dateStr));
 });
 
-const proximosPartidos = computed(() => {
-  const now = new Date().toISOString();
-  return partidosFiltrados.value.filter((p) => p.fecha >= now).slice(0, 8);
-});
-
 const partidosParaMostrar = computed(() => {
   if (selectedDate.value) {
     return partidosPorFecha.value;
   }
-  return proximosPartidos.value;
+  return partidosFiltrados.value;
 });
 
 const selectedPartido = computed(() =>
@@ -190,7 +185,7 @@ const clearDate = () => {
       <div class="xl:col-span-2">
         <div class="card p-5">
           <h3 class="text-lg font-semibold text-notion-text mb-3">
-            {{ selectedDate ? "Partidos del día seleccionado" : "Próximos partidos" }}
+            {{ selectedDate ? "Partidos del día seleccionado" : "Todos los partidos" }}
           </h3>
 
           <p class="text-xs text-notion-muted mb-3 flex items-center gap-3">
@@ -216,7 +211,7 @@ const clearDate = () => {
             class="py-4 text-sm text-notion-muted"
           >
             No hay partidos
-            {{ selectedDate ? "para el día seleccionado." : "próximos programados." }}
+            {{ selectedDate ? "para el día seleccionado." : "registrados." }}
           </div>
 
           <div v-else class="space-y-3">

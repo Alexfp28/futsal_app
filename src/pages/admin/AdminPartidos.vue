@@ -1,12 +1,15 @@
 <script setup>
-import { ref, onMounted } from "vue";
+import { ref, onMounted, computed } from "vue";
 import { supabase } from "@/lib/supabase";
 import { PlusIcon, PencilIcon, TrashIcon } from "@heroicons/vue/24/outline";
+import ConfirmDialog from "@/components/ConfirmDialog.vue";
 
 const partidos = ref([]);
 const equipos = ref([]);
 const loading = ref(true);
 const showModal = ref(false);
+const showDeleteDialog = ref(false);
+const partidoToDelete = ref(null);
 const editingPartido = ref(null);
 const form = ref({
   equipo_local_id: "",
@@ -17,6 +20,19 @@ const form = ref({
 });
 
 const estados = ["programado", "jugado", "cancelado"];
+
+const currentMapQuery = ref("");
+
+const updateMap = () => {
+  if (form.value.lugar) {
+    currentMapQuery.value = form.value.lugar;
+  }
+};
+
+const selectedMapUrl = computed(() => {
+  if (!currentMapQuery.value) return null;
+  return `https://maps.google.com/maps?q=${encodeURIComponent(currentMapQuery.value)}&hl=es&z=15&output=embed`;
+});
 
 onMounted(async () => {
   await Promise.all([loadPartidos(), loadEquipos()]);
@@ -80,13 +96,22 @@ const loadEquipos = async () => {
 const openModal = (partido = null) => {
   if (partido) {
     editingPartido.value = partido;
+    
+    let formattedDate = "";
+    if (partido.fecha) {
+      const dateObj = new Date(partido.fecha);
+      const tzOffset = dateObj.getTimezoneOffset() * 60000;
+      formattedDate = new Date(dateObj.getTime() - tzOffset).toISOString().slice(0, 16);
+    }
+
     form.value = {
       equipo_local_id: partido.equipo_local_id,
       equipo_visitante_id: partido.equipo_visitante_id,
-      fecha: partido.fecha,
+      fecha: formattedDate,
       lugar: partido.lugar,
       estado: partido.estado,
     };
+    currentMapQuery.value = partido.lugar || "";
   } else {
     editingPartido.value = null;
     form.value = {
@@ -96,6 +121,7 @@ const openModal = (partido = null) => {
       lugar: "Polideportivo Municipal",
       estado: "programado",
     };
+    currentMapQuery.value = "Polideportivo Municipal";
   }
   showModal.value = true;
 };
@@ -107,13 +133,18 @@ const closeModal = () => {
 
 const savePartido = async () => {
   try {
+    const dataToSave = { ...form.value };
+    if (dataToSave.fecha) {
+      dataToSave.fecha = new Date(dataToSave.fecha).toISOString();
+    }
+
     if (editingPartido.value) {
       await supabase
         .from("partidos")
-        .update(form.value)
+        .update(dataToSave)
         .eq("id", editingPartido.value.id);
     } else {
-      await supabase.from("partidos").insert(form.value);
+      await supabase.from("partidos").insert(dataToSave);
     }
     await loadPartidos();
     closeModal();
@@ -122,14 +153,23 @@ const savePartido = async () => {
   }
 };
 
-const deletePartido = async (id) => {
-  if (confirm("¿Estás seguro de eliminar este partido?")) {
-    try {
-      await supabase.from("partidos").delete().eq("id", id);
-      partidos.value = partidos.value.filter((p) => p.id !== id);
-    } catch (e) {
-      console.error("Error al eliminar:", e);
-    }
+const confirmDelete = (partido) => {
+  partidoToDelete.value = partido;
+  showDeleteDialog.value = true;
+};
+
+const deletePartido = async () => {
+  if (!partidoToDelete.value) return;
+  
+  try {
+    const id = partidoToDelete.value.id;
+    await supabase.from("partidos").delete().eq("id", id);
+    partidos.value = partidos.value.filter((p) => p.id !== id);
+  } catch (e) {
+    console.error("Error al eliminar:", e);
+  } finally {
+    showDeleteDialog.value = false;
+    partidoToDelete.value = null;
   }
 };
 
@@ -261,7 +301,7 @@ const getEstadoClass = (estado) => {
                     <PencilIcon class="w-4 h-4" />
                   </button>
                   <button
-                    @click="deletePartido(partido.id)"
+                    @click="confirmDelete(partido)"
                     class="p-2 text-notion-muted hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
                   >
                     <TrashIcon class="w-4 h-4" />
@@ -331,15 +371,38 @@ const getEstadoClass = (estado) => {
 
           <div>
             <label class="block text-sm font-medium text-notion-text mb-2"
-              >Lugar</label
+              >Ubicación (Lugar)</label
             >
-            <input
-              v-model="form.lugar"
-              type="text"
-              required
-              class="input"
-              placeholder="Lugar del partido"
-            />
+            
+            <div class="flex space-x-2 mb-2">
+              <input
+                v-model="form.lugar"
+                type="text"
+                required
+                class="input flex-1"
+                placeholder="Buscar en mapa (ej: Polideportivo Madrid)"
+                @keydown.enter.prevent="updateMap"
+              />
+              <button
+                type="button"
+                @click="updateMap"
+                class="btn-primary whitespace-nowrap"
+              >
+                Buscar
+              </button>
+            </div>
+
+            <div v-if="selectedMapUrl" class="w-full h-48 rounded-lg overflow-hidden border border-notion-border mt-2">
+              <iframe
+                width="100%"
+                height="100%"
+                frameborder="0"
+                scrolling="no"
+                marginheight="0"
+                marginwidth="0"
+                :src="selectedMapUrl"
+              ></iframe>
+            </div>
           </div>
 
           <div>
@@ -366,5 +429,18 @@ const getEstadoClass = (estado) => {
         </form>
       </div>
     </div>
+
+    <!-- Confirm Delete Dialog -->
+    <ConfirmDialog
+      :show="showDeleteDialog"
+      title="Eliminar Partido"
+      message="¿Estás seguro de que deseas eliminar este partido? Esta acción no se puede deshacer."
+      confirmText="Eliminar"
+      cancelText="Cancelar"
+      type="danger"
+      @confirm="deletePartido"
+      @cancel="showDeleteDialog = false"
+      @close="showDeleteDialog = false"
+    />
   </div>
 </template>

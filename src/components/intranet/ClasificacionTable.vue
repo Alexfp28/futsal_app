@@ -4,7 +4,7 @@ import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/stores/auth";
 
 const authStore = useAuthStore();
-const canManage = computed(() => authStore.isAdmin || authStore.isCapitan);
+const canManage = computed(() => authStore.isAdmin);
 
 const loading = ref(true);
 const error = ref("");
@@ -27,6 +27,8 @@ const form = ref({
   lugar: "Polideportivo Municipal",
 });
 
+const currentMapQuery = ref("Polideportivo Municipal");
+
 const equiposVisitante = computed(() =>
   equipos.value.filter((e) => e.id !== form.value.equipo_local_id)
 );
@@ -37,6 +39,17 @@ const fetchEquipos = async () => {
     .select("id, nombre, color_principal")
     .order("nombre");
   equipos.value = data || [];
+};
+
+const selectedMapUrl = computed(() => {
+  if (!currentMapQuery.value) return null;
+  return `https://maps.google.com/maps?q=${encodeURIComponent(currentMapQuery.value)}&hl=es&z=15&output=embed`;
+});
+
+const updateMap = () => {
+  if (form.value.lugar) {
+    currentMapQuery.value = form.value.lugar;
+  }
 };
 
 const openPanel = async () => {
@@ -50,6 +63,8 @@ const openPanel = async () => {
     fecha: new Date().toISOString().slice(0, 16),
     lugar: "Polideportivo Municipal",
   };
+  currentMapQuery.value = "Polideportivo Municipal";
+  
   if (equipos.value.length === 0) await fetchEquipos();
   showPanel.value = true;
 };
@@ -646,16 +661,39 @@ onMounted(fetchClasificacion);
               </div>
 
               <!-- Lugar -->
-              <div>
+              <div class="relative">
                 <label class="block text-xs font-medium text-notion-text mb-1.5">
-                  Lugar
+                  Ubicación
                 </label>
-                <input
-                  v-model="form.lugar"
-                  type="text"
-                  placeholder="Polideportivo Municipal"
-                  class="input text-sm"
-                />
+                <div class="flex space-x-2 mb-2">
+                  <input
+                    v-model="form.lugar"
+                    type="text"
+                    required
+                    placeholder="Polideportivo Municipal"
+                    class="input text-sm flex-1"
+                    @keydown.enter.prevent="updateMap"
+                  />
+                  <button
+                    type="button"
+                    @click="updateMap"
+                    class="btn-primary flex-shrink-0 text-sm whitespace-nowrap px-3 py-1.5"
+                  >
+                    Buscar
+                  </button>
+                </div>
+
+                <div v-if="selectedMapUrl" class="w-full h-36 rounded-lg overflow-hidden border border-notion-border mt-2">
+                  <iframe
+                    width="100%"
+                    height="100%"
+                    frameborder="0"
+                    scrolling="no"
+                    marginheight="0"
+                    marginwidth="0"
+                    :src="selectedMapUrl"
+                  ></iframe>
+                </div>
               </div>
 
               <!-- Feedback de error -->
