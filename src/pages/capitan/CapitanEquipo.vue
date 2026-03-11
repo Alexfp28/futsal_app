@@ -12,6 +12,7 @@ import {
   CheckIcon,
   ClockIcon,
   UsersIcon,
+  PencilSquareIcon,
 } from "@heroicons/vue/24/outline";
 
 const authStore = useAuthStore();
@@ -23,6 +24,30 @@ const loading = ref(true);
 const showFicharModal = ref(false);
 const showSolicitudesModal = ref(false);
 const enviandoPeticion = ref(false);
+
+// ==================== DRAWER EDICIÓN DEL EQUIPO ====================
+const showEditPanel = ref(false);
+const savingEquipo = ref(false);
+const editForm = ref({
+  nombre: "",
+  color_principal: "#164bf0",
+  color_secundario: "#f6ec15",
+});
+
+const openEditPanel = () => {
+  if (equipo.value) {
+    editForm.value = {
+      nombre: equipo.value.nombre || "",
+      color_principal: equipo.value.color_principal || "#164bf0",
+      color_secundario: equipo.value.color_secundario || "#f6ec15",
+    };
+  }
+  showEditPanel.value = true;
+};
+
+const closeEditPanel = () => {
+  showEditPanel.value = false;
+};
 
 // Variables para diálogos de confirmación
 const showConfirmDialog = ref(false);
@@ -99,6 +124,15 @@ const loadData = async () => {
     }
 
     equipo.value = equipoData;
+
+    // Rellenar formulario de edición
+    if (equipoData) {
+      editForm.value = {
+        nombre: equipoData.nombre || "",
+        color_principal: equipoData.color_principal || "#164bf0",
+        color_secundario: equipoData.color_secundario || "#f6ec15",
+      };
+    }
 
     // Cargar jugadores del equipo con su estado en plantilla
     if (equipoData) {
@@ -487,11 +521,52 @@ const expulsarJugador = (jugador) => {
     },
   );
 };
+// Guardar datos del equipo (sólo nombre y colores)
+const saveEquipo = async () => {
+  if (!equipo.value) return;
+  savingEquipo.value = true;
+  try {
+    const { error } = await supabase
+      .from("equipos")
+      .update({
+        nombre: editForm.value.nombre,
+        color_principal: editForm.value.color_principal,
+        color_secundario: editForm.value.color_secundario,
+      })
+      .eq("id", equipo.value.id);
+
+    if (error) throw error;
+
+    // Actualizar el equipo local para reflejar cambios inmediatamente
+    equipo.value = {
+      ...equipo.value,
+      nombre: editForm.value.nombre,
+      color_principal: editForm.value.color_principal,
+      color_secundario: editForm.value.color_secundario,
+    };
+
+    showInfo(
+      "Equipo actualizado",
+      "Los datos del equipo se han guardado correctamente.",
+      "success",
+    );
+  } catch (e) {
+    console.error("Error al guardar equipo:", e);
+    showInfo(
+      "Error al guardar",
+      e?.message || "No se pudo guardar la información del equipo.",
+      "danger",
+    );
+  } finally {
+    savingEquipo.value = false;
+  }
+};
 </script>
 
 <template>
   <div class="page-container">
-    <div class="flex items-center justify-between mb-8">
+    <!-- Encabezado -->
+    <div class="mb-8 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
       <div>
         <h1 class="page-title">Mi Equipo</h1>
         <p class="page-subtitle">Gestiona los jugadores de tu equipo</p>
@@ -511,6 +586,15 @@ const expulsarJugador = (jugador) => {
             {{ solicitudesPendientes.length }}
           </span>
         </button>
+        <!-- Botón editar equipo -->
+        <button
+          v-if="equipo"
+          @click="openEditPanel"
+          class="btn-secondary flex items-center space-x-2"
+        >
+          <PencilSquareIcon class="w-5 h-5" />
+          <span>Editar Equipo</span>
+        </button>
         <button
           @click="showFicharModal = true"
           class="btn-primary flex items-center space-x-2"
@@ -528,7 +612,7 @@ const expulsarJugador = (jugador) => {
       ></div>
     </div>
 
-    <template v-else>
+    <template v-if="!loading">
       <!-- Info del equipo -->
       <div class="card p-6 mb-8">
         <div class="flex items-center space-x-4">
@@ -840,6 +924,137 @@ const expulsarJugador = (jugador) => {
       </div>
     </div>
 
+    <!-- ==================== DRAWER: EDITAR EQUIPO ==================== -->
+    <Teleport to="body">
+      <Transition name="backdrop">
+        <div
+          v-if="showEditPanel"
+          class="fixed inset-0 bg-black/30 z-40 backdrop-blur-sm"
+          @click="closeEditPanel"
+        />
+      </Transition>
+
+      <Transition name="slideover">
+        <div
+          v-if="showEditPanel"
+          class="fixed inset-y-0 right-0 z-50 flex w-full max-w-md flex-col bg-white shadow-2xl"
+          @click.stop
+        >
+          <!-- Header del panel -->
+          <div class="flex items-center justify-between border-b border-notion-border px-6 py-4">
+            <div>
+              <h2 class="text-base font-semibold text-notion-text">Editar equipo</h2>
+              <p class="text-xs text-notion-muted mt-0.5">
+                Los cambios se guardarán en la base de datos al instante.
+              </p>
+            </div>
+            <button
+              type="button"
+              class="rounded-full p-1.5 text-notion-muted hover:bg-notion-bg hover:text-notion-text transition-colors"
+              @click="closeEditPanel"
+            >
+              <XMarkIcon class="w-5 h-5" />
+            </button>
+          </div>
+
+          <!-- Cuerpo -->
+          <div class="flex-1 overflow-y-auto px-6 py-6 space-y-6">
+            <!-- Preview en vivo del escudo -->
+            <div class="rounded-xl border border-notion-border bg-notion-bg px-4 py-4">
+              <p class="text-[10px] font-semibold uppercase tracking-wider text-notion-muted mb-3 text-center">
+                Vista previa
+              </p>
+              <div class="flex items-center gap-4 justify-center">
+                <div
+                  class="w-16 h-16 rounded-xl flex items-center justify-center text-white font-bold text-2xl transition-colors"
+                  :style="{ backgroundColor: editForm.color_principal }"
+                >
+                  {{ editForm.nombre?.charAt(0) || "?" }}
+                </div>
+                <div>
+                  <p class="font-semibold text-notion-text">
+                    {{ editForm.nombre || "Nombre del equipo" }}
+                  </p>
+                  <div class="flex items-center gap-2 mt-1.5">
+                    <div
+                      class="w-4 h-4 rounded-full border border-notion-border transition-colors"
+                      :style="{ backgroundColor: editForm.color_principal }"
+                    ></div>
+                    <div
+                      class="w-4 h-4 rounded-full border border-notion-border transition-colors"
+                      :style="{ backgroundColor: editForm.color_secundario }"
+                    ></div>
+                    <span class="text-xs text-notion-muted">Colores del equipo</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <form @submit.prevent="saveEquipo" class="space-y-5">
+              <!-- Nombre -->
+              <div>
+                <label class="block text-xs font-medium text-notion-text mb-1.5">Nombre del equipo</label>
+                <input
+                  v-model="editForm.nombre"
+                  type="text"
+                  required
+                  class="input text-sm"
+                  placeholder="Nombre del equipo"
+                />
+              </div>
+
+              <!-- Colores -->
+              <div class="grid grid-cols-2 gap-4">
+                <div>
+                  <label class="block text-xs font-medium text-notion-text mb-1.5">Color Principal</label>
+                  <div class="flex items-center gap-3">
+                    <input
+                      v-model="editForm.color_principal"
+                      type="color"
+                      class="w-12 h-10 rounded-lg cursor-pointer border border-notion-border p-0.5"
+                    />
+                    <span class="text-xs text-notion-muted font-mono">{{ editForm.color_principal }}</span>
+                  </div>
+                </div>
+                <div>
+                  <label class="block text-xs font-medium text-notion-text mb-1.5">Color Secundario</label>
+                  <div class="flex items-center gap-3">
+                    <input
+                      v-model="editForm.color_secundario"
+                      type="color"
+                      class="w-12 h-10 rounded-lg cursor-pointer border border-notion-border p-0.5"
+                    />
+                    <span class="text-xs text-notion-muted font-mono">{{ editForm.color_secundario }}</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Botones -->
+              <div class="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  class="btn-outline flex-1 text-sm"
+                  @click="closeEditPanel"
+                  :disabled="savingEquipo"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  class="btn-primary flex-1 text-sm flex items-center justify-center gap-2"
+                  :disabled="savingEquipo"
+                >
+                  <ArrowPathIcon v-if="savingEquipo" class="w-4 h-4 animate-spin" />
+                  <CheckIcon v-else class="w-4 h-4" />
+                  {{ savingEquipo ? "Guardando..." : "Guardar cambios" }}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+
     <!-- ==================== DIÁLOGOS DE CONFIRMACIÓN ==================== -->
 
     <!-- Diálogo de confirmación (para acciones peligrosas) -->
@@ -868,3 +1083,25 @@ const expulsarJugador = (jugador) => {
     />
   </div>
 </template>
+
+<style scoped>
+/* Backdrop fade */
+.backdrop-enter-active,
+.backdrop-leave-active {
+  transition: opacity 0.25s ease;
+}
+.backdrop-enter-from,
+.backdrop-leave-to {
+  opacity: 0;
+}
+
+/* Slide-over from right */
+.slideover-enter-active,
+.slideover-leave-active {
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.slideover-enter-from,
+.slideover-leave-to {
+  transform: translateX(100%);
+}
+</style>
