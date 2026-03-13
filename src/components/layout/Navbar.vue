@@ -19,10 +19,15 @@ const navigation = [
   { name: "Panel interno", href: "/intranet", requiresAuth: true },
   { name: "Identidad", href: "/identidad" },
   { name: "Equipos", href: "/equipos" },
+  { name: "Rankings", href: "/rankings", hideWhenAuth: true },
+  { name: "Palmarés", href: "/palmares" },
+  { name: "Traspasos", href: "/traspasos" },
   { name: "Jugadores Libres", href: "/jugadores-libres" },
+  { name: "Sugerencias", href: "/sugerencias" },
   { name: "Reglamento", href: "/reglamento" },
   { name: "Código de Conducta", href: "/codigo-conducta" },
   { name: "Economía", href: "/economia" },
+  { name: "Invitaciones", href: "/invitaciones", requiresAuth: true },
   // Solo visible para usuarios no autenticados (hay calendario interno)
   { name: "Calendario", href: "/calendario", hideWhenAuth: true },
 ];
@@ -96,7 +101,7 @@ onBeforeUnmount(() => {
 
 <template>
   <nav class="bg-white border-b border-notion-border sticky top-0 z-50">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="max-w-9xl mx-auto px-4 sm:px-6 lg:px-8">
       <div class="flex justify-between h-16">
         <!-- Logo -->
         <div class="flex items-center flex-shrink-0">
@@ -120,12 +125,14 @@ onBeforeUnmount(() => {
         </div>
 
         <!-- Desktop Navigation -->
-        <div class="hidden lg:flex items-center gap-1 p-2">
+        <div
+          class="hidden lg:flex items-center overflow-x-auto flex-1 px-2 py-2 scrollbar-hide"
+        >
           <router-link
             v-for="item in visibleNavigation"
             :key="item.name"
             :to="item.href"
-            class="px-3 py-2 text-sm font-medium text-notion-muted hover:text-notion-text hover:bg-notion-bg rounded-lg transition-colors whitespace-nowrap"
+            class="px-3 py-2 text-sm font-medium text-notion-muted hover:text-notion-text hover:bg-notion-bg rounded-lg transition-colors whitespace-nowrap flex-shrink-0"
             active-class="text-primary bg-primary-50"
           >
             {{ item.name }}

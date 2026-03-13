@@ -9,6 +9,7 @@ import {
   ClockIcon,
   XMarkIcon,
   CheckCircleIcon,
+  ArrowTopRightOnSquareIcon,
 } from "@heroicons/vue/24/outline";
 
 const partidos = ref([]);
@@ -253,6 +254,38 @@ const getPartidoColor = (estado) => {
   }
 };
 
+const getPartidoEmoji = (estado) => {
+  switch (estado) {
+    case "programado":
+      return "🔵";
+    case "jugado":
+      return "🟢";
+    case "cancelado":
+      return "🔴";
+    default:
+      return "⚪";
+  }
+};
+
+const getEstadoLabel = (estado) => {
+  switch (estado) {
+    case "programado":
+      return "Programado";
+    case "jugado":
+      return "Jugado";
+    case "cancelado":
+      return "Cancelado";
+    default:
+      return estado;
+  }
+};
+
+// Generar enlace de Google Maps
+const getGoogleMapsUrl = (lugar) => {
+  if (!lugar) return null;
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(lugar)}`;
+};
+
 const getPosicionSpanish = (posicion) => {
   const posiciones = {
     Portero: "Portero",
@@ -492,7 +525,8 @@ const partidoConvocatorias = computed(() => {
                   getPartidoColor(selectedPartido?.estado),
                 ]"
               >
-                {{ selectedPartido?.estado }}
+                {{ getPartidoEmoji(selectedPartido?.estado) }}
+                {{ getEstadoLabel(selectedPartido?.estado) }}
               </div>
             </div>
 
@@ -531,13 +565,38 @@ const partidoConvocatorias = computed(() => {
             </div>
             <div class="flex items-center p-3 bg-notion-bg rounded-lg">
               <MapPinIcon class="w-5 h-5 text-primary mr-3" />
-              <div>
+              <div class="flex-1 min-w-0">
                 <p class="text-xs text-notion-muted">Lugar</p>
                 <p class="font-medium text-notion-text">
-                  {{ selectedPartido?.lugar }}
+                  {{
+                    selectedPartido?.lugar ||
+                    selectedPartido?.campo_nombre ||
+                    "Por confirmar"
+                  }}
                 </p>
               </div>
             </div>
+          </div>
+
+          <!-- Enlace a Google Maps -->
+          <div
+            v-if="selectedPartido?.lugar || selectedPartido?.campo_nombre"
+            class="mb-6"
+          >
+            <a
+              :href="
+                getGoogleMapsUrl(
+                  selectedPartido?.lugar || selectedPartido?.campo_nombre,
+                )
+              "
+              target="_blank"
+              rel="noopener noreferrer"
+              class="flex items-center justify-center gap-2 p-3 bg-primary/10 hover:bg-primary/20 rounded-lg text-primary font-medium transition-colors"
+            >
+              <MapPinIcon class="w-5 h-5" />
+              <span>Abrir en Google Maps</span>
+              <ArrowTopRightOnSquareIcon class="w-4 h-4" />
+            </a>
           </div>
 
           <!-- Fecha completa -->

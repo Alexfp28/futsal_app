@@ -9,6 +9,11 @@ import ReglamentoPage from "@/pages/public/ReglamentoPage.vue";
 import CodigoConductaPage from "@/pages/public/CodigoConductaPage.vue";
 import EconomiaPage from "@/pages/public/EconomiaPage.vue";
 import CalendarioPage from "@/pages/public/CalendarioPage.vue";
+import RankingsPage from "@/pages/public/RankingsPage.vue";
+import PalmaresPage from "@/pages/public/PalmaresPage.vue";
+import SugerenciasPage from "@/pages/public/SugerenciasPage.vue";
+import TraspasosPage from "@/pages/public/TraspasosPage.vue";
+import InvitacionesPage from "@/pages/public/InvitacionesPage.vue";
 
 // Páginas de autenticación
 import LoginPage from "@/pages/auth/LoginPage.vue";
@@ -79,6 +84,50 @@ const routes = [
     component: CalendarioPage,
     meta: {
       title: "Calendario - FutSal La Vall",
+      guest: true,
+    },
+  },
+  {
+    path: "/rankings",
+    name: "rankings",
+    component: RankingsPage,
+    meta: {
+      title: "Rankings - FutSal La Vall",
+      guest: true,
+    },
+  },
+  {
+    path: "/palmares",
+    name: "palmares",
+    component: PalmaresPage,
+    meta: {
+      title: "Palmarés - FutSal La Vall",
+      guest: true,
+    },
+  },
+  {
+    path: "/sugerencias",
+    name: "sugerencias",
+    component: SugerenciasPage,
+    meta: {
+      title: "Sugerencias - FutSal La Vall",
+    },
+  },
+  {
+    path: "/traspasos",
+    name: "traspasos",
+    component: TraspasosPage,
+    meta: {
+      title: "Mercado de Fichajes - FutSal La Vall",
+      guest: true,
+    },
+  },
+  {
+    path: "/invitaciones",
+    name: "invitaciones",
+    component: InvitacionesPage,
+    meta: {
+      title: "Invitaciones - FutSal La Vall",
       guest: true,
     },
   },

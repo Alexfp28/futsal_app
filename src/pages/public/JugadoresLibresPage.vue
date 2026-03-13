@@ -1,8 +1,17 @@
 <script setup>
 import { ref, onMounted } from "vue";
 import { supabase } from "@/lib/supabase";
-import { UserIcon } from "@heroicons/vue/24/outline";
+import { useAuthStore } from "@/stores/auth";
+import {
+  UserIcon,
+  StarIcon,
+  CalendarIcon,
+  PhoneIcon,
+  ChatBubbleLeftIcon,
+} from "@heroicons/vue/24/outline";
+import { StarIcon as StarIconSolid } from "@heroicons/vue/24/solid";
 
+const authStore = useAuthStore();
 const jugadores = ref([]);
 const loading = ref(true);
 const error = ref(null);
@@ -17,78 +26,125 @@ const getJugadorFotoPath = (id) => {
 
 // Función para manejar error de imagen
 const handleImageError = (event) => {
-  // Ocultar imagen con error
   event.target.style.opacity = "0";
-  // Mostrar el placeholder (siguiente elemento hermano)
   const placeholder = event.target.nextElementSibling;
   if (placeholder && placeholder.classList.contains("absolute")) {
     placeholder.style.display = "flex";
   }
 };
 
+// Generar array de estrellas para el nivel
+const getEstrellas = (nivel) => {
+  return Array.from({ length: 5 }, (_, i) => i < nivel);
+};
+
+// Formatear disponibilidad
+const formatearDisponibilidad = (disp) => {
+  if (!disp) return "Por confirmar";
+  return disp;
+};
+
+// Datos de ejemplo para cuando no hay datos reales
+const jugadoresEjemplo = [
+  {
+    id: "ejemplo-1",
+    nombre: "Alejandro Sánchez",
+    posicion: "Portero",
+    numero_camiseta: 1,
+    edad: 23,
+    nivel: 4,
+    disponibilidad: "Sábados y Domingos",
+    descripcion: "Portero con experiencia en ligas locales",
+  },
+  {
+    id: "ejemplo-2",
+    nombre: "Bruno Martínez",
+    posicion: "Ala",
+    numero_camiseta: 7,
+    edad: 21,
+    nivel: 3,
+    disponibilidad: "Sábados",
+    descripcion: "Ala rápida, buen regate",
+  },
+  {
+    id: "ejemplo-3",
+    nombre: "David Ruiz",
+    posicion: "Cierre",
+    numero_camiseta: 4,
+    edad: 25,
+    nivel: 5,
+    disponibilidad: "Fines de semana",
+    descripcion: "Cierre experimentado, líder en pista",
+  },
+  {
+    id: "ejemplo-4",
+    nombre: "Fernando López",
+    posicion: "Universal",
+    numero_camiseta: 10,
+    edad: 19,
+    nivel: 2,
+    disponibilidad: "Sábados",
+    descripcion: "Jugador polivalente",
+  },
+  {
+    id: "ejemplo-5",
+    nombre: "Gabriel Torres",
+    posicion: "Defensa",
+    numero_camiseta: 3,
+    edad: 27,
+    nivel: 4,
+    disponibilidad: "Fines de semana",
+    descripcion: "Defensa central fuerte",
+  },
+  {
+    id: "ejemplo-6",
+    nombre: "Hugo Navarro",
+    posicion: "Ala",
+    numero_camiseta: 11,
+    edad: 22,
+    nivel: 3,
+    disponibilidad: "Domingos",
+    descripcion: "Ala izquierdo",
+  },
+];
+
 onMounted(async () => {
   try {
+    // Usar la vista jugadores_libres que ya tiene los campos correctos
     const { data, err } = await supabase
-      .from("profiles")
+      .from("jugadores_libres")
       .select("*")
-      .eq("libre", true)
       .order("nombre");
 
-    if (err) throw err;
-    jugadores.value = data || [];
+    if (err) {
+      console.warn(
+        "Error cargando desde vista, intentando desde profiles:",
+        err,
+      );
+      // Fallback a la tabla profiles directamente
+      const { data: profilesData, error: profilesErr } = await supabase
+        .from("profiles")
+        .select(
+          "id, nombre, posicion, numero_camiseta, foto_url, edad, nivel, disponibilidad, descripcion",
+        )
+        .eq("libre", true)
+        .in("rol", ["jugador", "capitan"])
+        .order("nombre");
+
+      if (profilesErr) throw profilesErr;
+      jugadores.value = profilesData || [];
+    } else {
+      jugadores.value = data || [];
+    }
   } catch (e) {
     error.value = "Error al cargar los jugadores";
     console.error(e);
+    // Usar datos de ejemplo si hay error
+    jugadores.value = [];
   } finally {
     loading.value = false;
   }
 });
-
-// Datos de ejemplo
-const jugadoresEjemplo = [
-  {
-    id: 1,
-    nombre: "Alejandro Sánchez",
-    posicion: "Portero",
-    numero_camiseta: 1,
-    equipo_id: null,
-  },
-  {
-    id: 2,
-    nombre: "Bruno Martínez",
-    posicion: "Ala",
-    numero_camiseta: 7,
-    equipo_id: null,
-  },
-  {
-    id: 3,
-    nombre: "David Ruiz",
-    posicion: "Cierre",
-    numero_camiseta: 4,
-    equipo_id: null,
-  },
-  {
-    id: 4,
-    nombre: "Fernando López",
-    posicion: "Universal",
-    numero_camiseta: 10,
-    equipo_id: null,
-  },
-  {
-    id: 5,
-    nombre: "Gabriel Torres",
-    posicion: "Defensa",
-    numero_camiseta: 3,
-    equipo_id: null,
-  },
-  {
-    id: 6,
-    nombre: "Hugo Navarro",
-    posicion: "Ala",
-    numero_camiseta: 11,
-    equipo_id: null,
-  },
-];
 
 const jugadoresFiltrados = () => {
   const lista = jugadores.value.length > 0 ? jugadores.value : jugadoresEjemplo;
@@ -195,6 +251,51 @@ const jugadoresFiltrados = () => {
             {{ jugador.nombre }}
           </h3>
 
+          <!-- Edad -->
+          <div
+            v-if="jugador.edad"
+            class="flex items-center gap-2 mb-2 text-sm text-notion-muted"
+          >
+            <span class="font-medium">{{ jugador.edad }} años</span>
+          </div>
+
+          <!-- Nivel con estrellas -->
+          <div v-if="jugador.nivel" class="flex items-center gap-1 mb-3">
+            <div class="flex items-center">
+              <template
+                v-for="(filled, idx) in getEstrellas(jugador.nivel)"
+                :key="idx"
+              >
+                <StarIconSolid v-if="filled" class="w-4 h-4 text-yellow-400" />
+                <StarIcon v-else class="w-4 h-4 text-gray-300" />
+              </template>
+            </div>
+            <span class="text-xs text-notion-muted ml-1"
+              >Nivel {{ jugador.nivel }}</span
+            >
+          </div>
+
+          <!-- Disponibilidad -->
+          <div
+            v-if="jugador.disponibilidad"
+            class="flex items-start gap-2 mb-3"
+          >
+            <CalendarIcon class="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
+            <span class="text-xs text-notion-muted">
+              {{ formatearDisponibilidad(jugador.disponibilidad) }}
+            </span>
+          </div>
+
+          <!-- Descripción -->
+          <div v-if="jugador.descripcion" class="flex items-start gap-2 mb-4">
+            <ChatBubbleLeftIcon
+              class="w-4 h-4 text-notion-muted mt-0.5 flex-shrink-0"
+            />
+            <p class="text-xs text-notion-muted line-clamp-2">
+              {{ jugador.descripcion }}
+            </p>
+          </div>
+
           <!-- Estado -->
           <div class="flex items-center gap-2 mb-4">
             <span
@@ -241,8 +342,15 @@ const jugadoresFiltrados = () => {
         panel de capitán. Los jugadores recibirán una solicitud que podrán
         aceptar o rechazar.
       </p>
-      <router-link to="/login" class="btn-primary text-sm">
+      <router-link
+        v-if="!authStore.isAuthenticated"
+        to="/login"
+        class="btn-primary text-sm"
+      >
         Acceder al panel
+      </router-link>
+      <router-link v-else to="/capitan" class="btn-primary text-sm">
+        Ir al panel de capitán
       </router-link>
     </div>
   </div>
