@@ -2,6 +2,7 @@
 import { ref, onMounted } from "vue";
 import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/stores/auth";
+import { useRouteRefresh } from "@/composables/useRouteRefresh";
 import {
   TrophyIcon,
   StarIcon,
@@ -25,7 +26,8 @@ const form = ref({
 });
 
 // Cargar temporadas con campeones y goleadores
-onMounted(async () => {
+const loadPalmares = async () => {
+  loading.value = true;
   try {
     // Cargar temporadas
     const { data: tempData } = await supabase
@@ -60,7 +62,14 @@ onMounted(async () => {
   } finally {
     loading.value = false;
   }
+};
+
+onMounted(() => {
+  loadPalmares();
 });
+
+// Recargar datos cuando se navega a esta ruta
+useRouteRefresh(loadPalmares);
 
 // Datos de ejemplo
 const temporadasEjemplo = [

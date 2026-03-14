@@ -2,6 +2,7 @@
 import { ref, onMounted } from "vue";
 import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/stores/auth";
+import { useRouteRefresh } from "@/composables/useRouteRefresh";
 import {
   UserIcon,
   StarIcon,
@@ -108,7 +109,8 @@ const jugadoresEjemplo = [
   },
 ];
 
-onMounted(async () => {
+const loadJugadoresLibres = async () => {
+  loading.value = true;
   try {
     // Usar la vista jugadores_libres que ya tiene los campos correctos
     const { data, err } = await supabase
@@ -144,7 +146,13 @@ onMounted(async () => {
   } finally {
     loading.value = false;
   }
+};
+
+onMounted(() => {
+  loadJugadoresLibres();
 });
+
+useRouteRefresh(loadJugadoresLibres);
 
 const jugadoresFiltrados = () => {
   const lista = jugadores.value.length > 0 ? jugadores.value : jugadoresEjemplo;

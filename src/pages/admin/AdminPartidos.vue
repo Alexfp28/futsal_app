@@ -1,6 +1,7 @@
 <script setup>
 import { ref, onMounted, computed } from "vue";
 import { supabase } from "@/lib/supabase";
+import { useRouteRefresh } from "@/composables/useRouteRefresh";
 import { PlusIcon, PencilIcon, TrashIcon } from "@heroicons/vue/24/outline";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
 
@@ -35,6 +36,11 @@ const selectedMapUrl = computed(() => {
 });
 
 onMounted(async () => {
+  await Promise.all([loadPartidos(), loadEquipos()]);
+});
+
+// Recargar datos cuando se navega a esta ruta
+useRouteRefresh(async () => {
   await Promise.all([loadPartidos(), loadEquipos()]);
 });
 

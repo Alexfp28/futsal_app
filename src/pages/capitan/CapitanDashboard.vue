@@ -2,6 +2,7 @@
 import { ref, onMounted } from "vue";
 import { useAuthStore } from "@/stores/auth";
 import { supabase } from "@/lib/supabase";
+import { useRouteRefresh } from "@/composables/useRouteRefresh";
 import {
   UserGroupIcon,
   CalendarIcon,
@@ -13,10 +14,6 @@ const equipo = ref(null);
 const jugadoresLibres = ref([]);
 const proximosPartidos = ref([]);
 const loading = ref(true);
-
-onMounted(async () => {
-  await loadData();
-});
 
 const loadData = async () => {
   loading.value = true;
@@ -80,6 +77,13 @@ const loadData = async () => {
     loading.value = false;
   }
 };
+
+onMounted(async () => {
+  await loadData();
+});
+
+// Recargar datos cuando se navega a esta ruta
+useRouteRefresh(loadData);
 
 const formatDate = (fecha) => {
   return new Date(fecha).toLocaleDateString("es-ES", {

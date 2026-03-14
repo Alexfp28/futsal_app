@@ -3,6 +3,7 @@ import { ref, computed, onMounted } from "vue";
 import { useAuthStore } from "@/stores/auth";
 import { supabase } from "@/lib/supabase";
 import { STRING } from "@/constants/STRING";
+import { useRouteRefresh } from "@/composables/useRouteRefresh";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
 import {
   UserIcon,
@@ -119,6 +120,9 @@ const jugadoresSuplentes = computed(() =>
 onMounted(async () => {
   await loadData();
 });
+
+// Recargar datos cuando se navega a esta ruta
+useRouteRefresh(loadData);
 
 const loadData = async () => {
   loading.value = true;

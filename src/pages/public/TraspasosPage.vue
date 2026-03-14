@@ -2,6 +2,7 @@
 import { ref, onMounted } from "vue";
 import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/stores/auth";
+import { useRouteRefresh } from "@/composables/useRouteRefresh";
 import {
   ArrowRightIcon,
   ClockIcon,
@@ -25,7 +26,8 @@ const estados = {
   cancelado: { label: "Cancelado", color: "text-red-600", icon: XCircleIcon },
 };
 
-onMounted(async () => {
+const loadTraspasos = async () => {
+  loading.value = true;
   try {
     const { data, error } = await supabase
       .from("traspasos")
@@ -47,7 +49,14 @@ onMounted(async () => {
   } finally {
     loading.value = false;
   }
+};
+
+onMounted(() => {
+  loadTraspasos();
 });
+
+// Recargar datos cuando se navega a esta ruta
+useRouteRefresh(loadTraspasos);
 
 const traspasosEjemplo = [
   {

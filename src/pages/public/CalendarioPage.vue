@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed, onMounted } from "vue";
 import { supabase } from "@/lib/supabase";
+import { useRouteRefresh } from "@/composables/useRouteRefresh";
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -19,7 +20,8 @@ const selectedPartido = ref(null);
 const isOpen = ref(false);
 const convocatorias = ref({});
 
-onMounted(async () => {
+const loadPartidos = async () => {
+  loading.value = true;
   try {
     // Cargar partidos con información de equipos
     const { data, err } = await supabase
@@ -39,7 +41,14 @@ onMounted(async () => {
   } finally {
     loading.value = false;
   }
+};
+
+onMounted(() => {
+  loadPartidos();
 });
+
+// Recargar datos cuando se navega a esta ruta
+useRouteRefresh(loadPartidos);
 
 async function cargarConvocatorias() {
   try {

@@ -306,6 +306,38 @@ export const useAuthStore = defineStore("auth", {
     },
 
     // ============================================
+    // OAUTH (GOOGLE, ETC)
+    // ============================================
+
+    async signInWithGoogle() {
+      console.log("[AUTH] 🔐 Iniciando login con Google...");
+      this.loading = true;
+      this.error = null;
+
+      try {
+        const { data, error } = await supabase.auth.signInWithOAuth({
+          provider: "google",
+          options: {
+            redirectTo: `${window.location.origin}/intranet`,
+          },
+        });
+
+        if (error) {
+          console.error("[AUTH] ❌ Error en signInWithOAuth:", error);
+          throw error;
+        }
+
+        console.log("[AUTH] ✓ OAuth iniciado correctamente");
+        return { success: true };
+      } catch (error) {
+        console.error("[AUTH] ❌ Error en signInWithGoogle:", error);
+        this.error = error.message;
+        this.loading = false;
+        return { success: false, error: error.message };
+      }
+    },
+
+    // ============================================
     // LOGIN
     // ============================================
 

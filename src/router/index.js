@@ -84,7 +84,6 @@ const routes = [
     component: CalendarioPage,
     meta: {
       title: "Calendario - FutSal La Vall",
-      guest: true,
     },
   },
   {
@@ -93,7 +92,6 @@ const routes = [
     component: RankingsPage,
     meta: {
       title: "Rankings - FutSal La Vall",
-      guest: true,
     },
   },
   {
@@ -102,7 +100,6 @@ const routes = [
     component: PalmaresPage,
     meta: {
       title: "Palmarés - FutSal La Vall",
-      guest: true,
     },
   },
   {
@@ -119,7 +116,6 @@ const routes = [
     component: TraspasosPage,
     meta: {
       title: "Mercado de Fichajes - FutSal La Vall",
-      guest: true,
     },
   },
   {
@@ -128,7 +124,8 @@ const routes = [
     component: InvitacionesPage,
     meta: {
       title: "Invitaciones - FutSal La Vall",
-      guest: true,
+      requiresAuth: true,
+      roles: ["admin", "capitan", "jugador"],
     },
   },
 
@@ -297,6 +294,13 @@ router.beforeEach(async (to, from, next) => {
   }
 
   next();
+});
+
+// Hook para limpiar estado después de cada navegación
+router.afterEach((to, from) => {
+  // Forzar que los componentes se recargen sus datos
+  // Esto es especialmente importante para navegación hacia atrás del navegador
+  window.dispatchEvent(new CustomEvent("route-change", { detail: { to, from } }));
 });
 
 export default router;

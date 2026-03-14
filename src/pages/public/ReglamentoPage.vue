@@ -1,9 +1,12 @@
 <script setup>
+import { ref } from "vue";
+import { useScrollReveal } from "@/composables/useScrollReveal";
 import {
   BookOpenIcon,
   ClipboardDocumentCheckIcon,
   TrophyIcon,
   UserGroupIcon,
+  ChevronDownIcon,
 } from "@heroicons/vue/24/outline";
 
 const secciones = [
@@ -57,6 +60,13 @@ const reglasBasicas = [
   "Los cambios son ilimitados y se realizan por la zona de cambios",
   "El portero puede tocar el balón con las manos dentro del área",
 ];
+
+const { observe, isVisible } = useScrollReveal({ threshold: 0.12 });
+const openSection = ref(secciones[0].titulo);
+
+const toggleSection = (titulo) => {
+  openSection.value = openSection.value === titulo ? null : titulo;
+};
 </script>
 
 <template>
@@ -69,38 +79,79 @@ const reglasBasicas = [
       </p>
     </div>
 
-    <!-- Secciones principales -->
-    <div class="space-y-8">
-      <div v-for="seccion in secciones" :key="seccion.titulo" class="card p-6">
-        <div class="flex items-start space-x-4">
+    <!-- Quick Reference Bar -->
+    <div class="flex gap-2 overflow-x-auto scrollbar-hide mb-6 pb-1">
+      <button
+        v-for="s in secciones"
+        :key="s.titulo"
+        @click="openSection = s.titulo"
+        :class="[
+          'flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-all border',
+          openSection === s.titulo
+            ? 'bg-primary text-white border-primary'
+            : 'border-notion-border text-notion-muted hover:border-primary/40 hover:text-primary',
+        ]"
+      >
+        <component :is="s.icono" class="w-3.5 h-3.5" />
+        {{ s.titulo }}
+      </button>
+    </div>
+
+    <!-- Accordion Secciones -->
+    <div class="space-y-3">
+      <div
+        v-for="seccion in secciones"
+        :key="seccion.titulo"
+        class="card overflow-hidden"
+      >
+        <!-- Accordion Header -->
+        <button
+          @click="toggleSection(seccion.titulo)"
+          :aria-expanded="openSection === seccion.titulo"
+          class="w-full flex items-center gap-3 p-4 text-left hover:bg-notion-bg transition-colors"
+        >
           <div
-            class="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center flex-shrink-0"
+            class="w-9 h-9 bg-primary/10 rounded-lg flex items-center justify-center flex-shrink-0"
           >
-            <component :is="seccion.icono" class="w-6 h-6 text-primary" />
+            <component :is="seccion.icono" class="w-5 h-5 text-primary" />
           </div>
-          <div class="flex-1">
-            <h2 class="text-xl font-semibold text-notion-text mb-4">
-              {{ seccion.titulo }}
-            </h2>
-            <ul class="space-y-2">
-              <li
-                v-for="(item, index) in seccion.contenido"
-                :key="index"
-                class="flex items-start space-x-2"
-              >
-                <span
-                  class="w-1.5 h-1.5 bg-primary rounded-full mt-2 flex-shrink-0"
-                ></span>
-                <span class="text-notion-muted">{{ item }}</span>
-              </li>
-            </ul>
-          </div>
+          <span class="flex-1 font-semibold text-notion-text">{{
+            seccion.titulo
+          }}</span>
+          <ChevronDownIcon
+            class="w-4 h-4 text-notion-muted transition-transform duration-300"
+            :class="{ 'rotate-180': openSection === seccion.titulo }"
+            aria-hidden="true"
+          />
+        </button>
+
+        <!-- Accordion Body -->
+        <div
+          class="accordion-body"
+          :class="{ open: openSection === seccion.titulo }"
+        >
+          <ul class="px-4 pb-4 pt-1 space-y-2">
+            <li
+              v-for="(item, index) in seccion.contenido"
+              :key="index"
+              class="flex items-start gap-2"
+            >
+              <span
+                class="w-1.5 h-1.5 bg-primary rounded-full mt-2 flex-shrink-0"
+              ></span>
+              <span class="text-notion-muted text-sm">{{ item }}</span>
+            </li>
+          </ul>
         </div>
       </div>
     </div>
 
     <!-- Reglas básicas -->
-    <div class="mt-8 card p-6">
+    <div
+      ref="(el) => observe(el, 'rules')"
+      class="mt-8 card p-6"
+      :class="{ 'opacity-100 translate-y-0': isVisible('rules'), 'opacity-0 translate-y-8': !isVisible('rules') }"
+    >
       <h2 class="text-xl font-semibold text-notion-text mb-4">
         Reglas Básicas de Juego
       </h2>
@@ -121,7 +172,11 @@ const reglasBasicas = [
     </div>
 
     <!-- Nota importante -->
-    <div class="mt-8 p-6 bg-secondary/10 rounded-xl border border-secondary/20">
+    <div
+      ref="(el) => observe(el, 'note')"
+      class="mt-8 p-6 bg-secondary/10 rounded-xl border border-secondary/20"
+      :class="{ 'opacity-100 translate-y-0': isVisible('note'), 'opacity-0 translate-y-8': !isVisible('note') }"
+    >
       <h3 class="font-semibold text-notion-text mb-2">Nota Importante</h3>
       <p class="text-sm text-notion-muted">
         Este reglamento puede ser modificado por la organización en cualquier
@@ -132,7 +187,11 @@ const reglasBasicas = [
     </div>
 
     <!-- Descarga PDF -->
-    <div class="mt-8 text-center">
+    <div
+      ref="(el) => observe(el, 'pdf')"
+      class="mt-8 text-center"
+      :class="{ 'opacity-100 translate-y-0': isVisible('pdf'), 'opacity-0 translate-y-8': !isVisible('pdf') }"
+    >
       <p class="text-sm text-notion-muted mb-4">
         ¿Quieres tener el reglamento siempre a mano?
       </p>
@@ -140,3 +199,15 @@ const reglasBasicas = [
     </div>
   </div>
 </template>
+
+<style scoped>
+.accordion-body {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 300ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.accordion-body.open {
+  max-height: 600px;
+}
+</style>

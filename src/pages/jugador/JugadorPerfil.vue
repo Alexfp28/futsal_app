@@ -2,6 +2,7 @@
 import { ref, onMounted, computed } from "vue";
 import { useAuthStore } from "@/stores/auth";
 import { supabase } from "@/lib/supabase";
+import { useRouteRefresh } from "@/composables/useRouteRefresh";
 import {
   UserIcon,
   PencilIcon,
@@ -35,10 +36,6 @@ const fotoPreview = ref(null);
 const fotoFile = ref(null);
 
 const posiciones = ["Portero", "Defensa", "Ala", "Cierre", "Universal"];
-
-onMounted(async () => {
-  await loadData();
-});
 
 const loadData = async () => {
   loading.value = true;
@@ -154,6 +151,13 @@ const loadData = async () => {
     loading.value = false;
   }
 };
+
+onMounted(async () => {
+  await loadData();
+});
+
+// Recargar datos cuando se navega a esta ruta
+useRouteRefresh(loadData);
 
 // Solicitudes pendientes recibidas (solo mostrar en "Invitaciones de Equipos")
 const solicitudesRecibidasPendientes = computed(() =>

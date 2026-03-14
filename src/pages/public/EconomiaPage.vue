@@ -1,6 +1,7 @@
 <script setup>
 import { ref, onMounted, computed } from "vue";
 import { supabase } from "@/lib/supabase";
+import { useRouteRefresh } from "@/composables/useRouteRefresh";
 import {
   Chart as ChartJS,
   ArcElement,
@@ -40,7 +41,8 @@ const selectedComprobante = ref(null);
 const isModalOpen = ref(false);
 
 // Cargar datos
-onMounted(async () => {
+const loadEconomia = async () => {
+  loading.value = true;
   try {
     // Cargar gastos
     const { data: gastosData, error: gastosErr } = await supabase
@@ -81,7 +83,13 @@ onMounted(async () => {
   } finally {
     loading.value = false;
   }
+};
+
+onMounted(() => {
+  loadEconomia();
 });
+
+useRouteRefresh(loadEconomia);
 
 // Datos de ejemplo
 const gastosEjemplo = [

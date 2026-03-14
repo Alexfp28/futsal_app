@@ -1,6 +1,7 @@
 <script setup>
 import { ref, onMounted } from "vue";
 import { supabase } from "@/lib/supabase";
+import { useRouteRefresh } from "@/composables/useRouteRefresh";
 import { UserGroupIcon, TrophyIcon } from "@heroicons/vue/24/outline";
 
 const equipos = ref([]);
@@ -28,7 +29,9 @@ const handleImageError = (event) => {
   }
 };
 
-onMounted(async () => {
+const loadEquipos = async () => {
+  loading.value = true;
+  error.value = null;
   try {
     const { data, err } = await supabase
       .from("equipos")
@@ -43,7 +46,14 @@ onMounted(async () => {
   } finally {
     loading.value = false;
   }
+};
+
+onMounted(() => {
+  loadEquipos();
 });
+
+// Recargar datos cuando se navega a esta ruta
+useRouteRefresh(loadEquipos);
 
 // Datos de ejemplo para mostrar cuando no hay conexión a Supabase
 const equiposEjemplo = [

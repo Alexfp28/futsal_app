@@ -2,6 +2,7 @@
 import { ref, onMounted } from "vue";
 import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/stores/auth";
+import { useRouteRefresh } from "@/composables/useRouteRefresh";
 import {
   LightBulbIcon,
   BugAntIcon,
@@ -37,7 +38,8 @@ const estados = {
   rechazado: { label: "Rechazado", color: "bg-gray-100 text-gray-800" },
 };
 
-onMounted(async () => {
+const loadSugerencias = async () => {
+  loading.value = true;
   try {
     const { data, error } = await supabase
       .from("sugerencias")
@@ -52,7 +54,14 @@ onMounted(async () => {
   } finally {
     loading.value = false;
   }
+};
+
+onMounted(() => {
+  loadSugerencias();
 });
+
+// Recargar datos cuando se navega a esta ruta
+useRouteRefresh(loadSugerencias);
 
 const handleSubmit = async () => {
   if (!form.value.titulo || !form.value.descripcion) return;

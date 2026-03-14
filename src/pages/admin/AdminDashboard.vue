@@ -1,6 +1,7 @@
 <script setup>
 import { ref, onMounted } from "vue";
 import { supabase } from "@/lib/supabase";
+import { useRouteRefresh } from "@/composables/useRouteRefresh";
 import {
   UsersIcon,
   UserGroupIcon,
@@ -17,7 +18,8 @@ const stats = ref({
 
 const loading = ref(true);
 
-onMounted(async () => {
+const loadStats = async () => {
+  loading.value = true;
   try {
     // Cargar estadísticas
     const [equiposRes, jugadoresRes, partidosRes, gastosRes] =
@@ -46,7 +48,13 @@ onMounted(async () => {
   } finally {
     loading.value = false;
   }
+};
+
+onMounted(() => {
+  loadStats();
 });
+
+useRouteRefresh(loadStats);
 
 const quickActions = [
   {

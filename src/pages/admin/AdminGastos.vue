@@ -1,6 +1,7 @@
 <script setup>
 import { ref, onMounted, computed } from "vue";
 import { supabase } from "@/lib/supabase";
+import { useRouteRefresh } from "@/composables/useRouteRefresh";
 import { PlusIcon, PencilIcon, TrashIcon } from "@heroicons/vue/24/outline";
 
 const gastos = ref([]);
@@ -22,10 +23,6 @@ const categorias = [
   "Árbitros",
   "Otros",
 ];
-
-onMounted(async () => {
-  await loadGastos();
-});
 
 const loadGastos = async () => {
   loading.value = true;
@@ -73,6 +70,13 @@ const loadGastos = async () => {
     loading.value = false;
   }
 };
+
+onMounted(async () => {
+  await loadGastos();
+});
+
+// Recargar datos cuando se navega a esta ruta
+useRouteRefresh(loadGastos);
 
 const totalGastos = computed(() => {
   return gastos.value.reduce((sum, g) => sum + Number(g.importe), 0);

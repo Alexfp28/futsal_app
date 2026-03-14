@@ -1,6 +1,7 @@
 <script setup>
 import { ref, onMounted } from "vue";
 import { supabase } from "@/lib/supabase";
+import { useRouteRefresh } from "@/composables/useRouteRefresh";
 import {
   PencilIcon,
   TrashIcon,
@@ -20,10 +21,6 @@ const showDeleteDialog = ref(false);
 const jugadorToDelete = ref(null);
 
 const roles = ["admin", "capitan", "jugador"];
-
-onMounted(async () => {
-  await loadJugadores();
-});
 
 const loadJugadores = async () => {
   loading.value = true;
@@ -61,6 +58,13 @@ const loadJugadores = async () => {
     loading.value = false;
   }
 };
+
+onMounted(async () => {
+  await loadJugadores();
+});
+
+// Recargar datos cuando se navega hacia atrás o a esta ruta
+useRouteRefresh(loadJugadores);
 
 const jugadoresFiltrados = () => {
   let result = jugadores.value;

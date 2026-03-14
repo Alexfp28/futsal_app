@@ -1,6 +1,7 @@
 <script setup>
 import { ref, onMounted } from "vue";
 import { supabase } from "@/lib/supabase";
+import { useRouteRefresh } from "@/composables/useRouteRefresh";
 import { PlusIcon, PencilIcon, TrashIcon } from "@heroicons/vue/24/outline";
 
 const equipos = ref([]);
@@ -18,6 +19,11 @@ const form = ref({
 onMounted(async () => {
   await loadEquipos();
   await loadCapitanes();
+});
+
+// Recargar datos cuando se navega a esta ruta
+useRouteRefresh(async () => {
+  await Promise.all([loadEquipos(), loadCapitanes()]);
 });
 
 const loadEquipos = async () => {

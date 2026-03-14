@@ -2,6 +2,7 @@
 import { ref, onMounted } from "vue";
 import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/stores/auth";
+import { useRouteRefresh } from "@/composables/useRouteRefresh";
 import {
   UserPlusIcon,
   ClipboardDocumentIcon,
@@ -25,7 +26,8 @@ const form = ref({
 
 const equipos = ref([]);
 
-onMounted(async () => {
+const loadInvitaciones = async () => {
+  loading.value = true;
   try {
     // Cargar invitaciones del usuario actual
     if (isAuthenticated) {
@@ -54,7 +56,13 @@ onMounted(async () => {
   } finally {
     loading.value = false;
   }
+};
+
+onMounted(() => {
+  loadInvitaciones();
 });
+
+useRouteRefresh(loadInvitaciones);
 
 const generateLink = (codigo) => {
   return `${window.location.origin}/registro?invitacion=${codigo}`;

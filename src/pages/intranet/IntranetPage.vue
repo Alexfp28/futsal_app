@@ -1,18 +1,30 @@
 <script setup>
 import { ref, computed } from "vue";
 import { useAuthStore } from "@/stores/auth";
+import { useScrollReveal } from "@/composables/useScrollReveal";
 import ClasificacionTable from "@/components/intranet/ClasificacionTable.vue";
 import CalendarioIntranet from "@/components/intranet/CalendarioIntranet.vue";
 import RankingsPage from "@/pages/public/RankingsPage.vue";
 import TournamentBracket from "@/components/intranet/TournamentBracket.vue";
+import {
+  SparklesIcon,
+  CheckCircleIcon,
+  ShieldCheckIcon,
+  UserGroupIcon,
+} from "@heroicons/vue/24/outline";
 
 const authStore = useAuthStore();
+const { observe, isVisible } = useScrollReveal({ threshold: 0.12 });
 
 const tabs = [
-  { id: "clasificacion", label: "Clasificación" },
-  { id: "calendario", label: "Calendario y Próximos Partidos" },
-  { id: "rankings", label: "Rankings de Jugadores" },
-  { id: "torneo", label: "Torneo" },
+  { id: "clasificacion", label: "Clasificación", icon: ShieldCheckIcon },
+  {
+    id: "calendario",
+    label: "Calendario y Próximos Partidos",
+    icon: CheckCircleIcon,
+  },
+  { id: "rankings", label: "Rankings de Jugadores", icon: UserGroupIcon },
+  { id: "torneo", label: "Torneo", icon: SparklesIcon },
 ];
 
 const activeTab = ref("clasificacion");
@@ -26,153 +38,370 @@ const userRoleLabel = computed(() => {
 </script>
 
 <template>
-  <div class="page-container">
-    <!-- Encabezado -->
-    <div
-      class="mb-8 flex flex-col gap-4 md:flex-row md:items-center md:justify-between"
+  <div>
+    <!-- Hero Header Section -->
+    <section
+      class="relative bg-gradient-to-br from-primary-900 via-primary-800 to-primary-700/90 text-white overflow-hidden pt-12 pb-20 md:pt-16 md:pb-24"
     >
-      <div>
-        <h1 class="page-title mb-2">Panel interno</h1>
-        <p class="page-subtitle mb-0">
-          Accede a la información interna de la organización: clasificación,
-          calendario y rankings.
-        </p>
-      </div>
+      <!-- SVG Pattern de cancha -->
+      <svg
+        class="absolute inset-0 w-full h-full opacity-[0.03]"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <defs>
+          <pattern
+            id="court-pattern"
+            x="0"
+            y="0"
+            width="80"
+            height="80"
+            patternUnits="userSpaceOnUse"
+          >
+            <rect
+              width="80"
+              height="80"
+              fill="none"
+              stroke="white"
+              stroke-width="0.5"
+            />
+            <circle
+              cx="40"
+              cy="40"
+              r="20"
+              fill="none"
+              stroke="white"
+              stroke-width="0.5"
+            />
+          </pattern>
+        </defs>
+        <rect width="100%" height="100%" fill="url(#court-pattern)" />
+      </svg>
 
-      <div class="flex flex-col items-start md:items-end gap-2">
-        <div class="flex items-center gap-3">
-          <div class="text-right">
-            <p class="text-sm font-medium text-notion-text">
-              {{ authStore.userName || "Usuario" }}
-            </p>
-            <p class="text-xs text-notion-muted">
-              {{ userRoleLabel }}
+      <!-- Blur orbs decorativos -->
+      <div
+        class="absolute -top-20 -left-20 w-96 h-96 bg-primary/20 rounded-full blur-3xl"
+      ></div>
+      <div
+        class="absolute -bottom-10 right-0 w-80 h-80 bg-secondary/15 rounded-full blur-3xl"
+      ></div>
+
+      <!-- Contenido header -->
+      <div class="page-container relative z-10">
+        <div
+          class="flex flex-col md:flex-row md:items-center md:justify-between gap-6"
+        >
+          <!-- Left side -->
+          <div class="flex-1">
+            <h1 class="text-5xl md:text-6xl font-black leading-tight mb-4">
+              Panel Interno
+            </h1>
+            <p class="text-lg text-white/80 max-w-xl leading-relaxed">
+              Accede a toda la información de la competición: clasificación,
+              calendario de partidos, rankings de jugadores y torneo.
             </p>
           </div>
-          <span class="badge badge-primary capitalize">
-            {{ authStore.userRole }}
-          </span>
-        </div>
-        <div class="flex flex-wrap gap-2 text-xs text-notion-muted">
-          <span v-if="authStore.isAdmin" class="badge badge-success">
-            Acceso administrador
-          </span>
-          <span v-else-if="authStore.isCapitan" class="badge badge-secondary">
-            Acceso capitán
-          </span>
-          <span v-else-if="authStore.isJugador" class="badge badge-secondary">
-            Acceso jugador
-          </span>
-        </div>
-      </div>
-    </div>
 
-    <!-- Pestañas -->
-    <div class="mb-6 border-b border-notion-border">
-      <nav
-        class="-mb-px flex flex-wrap gap-4"
-        aria-label="Pestañas de intranet"
-      >
-        <button
-          v-for="tab in tabs"
-          :key="tab.id"
-          type="button"
-          @click="activeTab = tab.id"
-          :class="[
-            'whitespace-nowrap border-b-2 px-3 pb-3 text-sm font-medium transition-colors',
-            activeTab === tab.id
-              ? 'border-primary text-primary'
-              : 'border-transparent text-notion-muted hover:text-notion-text hover:border-notion-border',
-          ]"
-        >
-          {{ tab.label }}
-        </button>
-      </nav>
-    </div>
-
-    <!-- Contenido de pestañas -->
-    <div class="space-y-6">
-      <!-- Clasificación -->
-      <section
-        v-if="activeTab === 'clasificacion'"
-        aria-label="Clasificación general"
-      >
-        <div class="card p-6">
-          <h2 class="text-xl font-semibold text-notion-text mb-2">
-            Tabla de clasificación
-          </h2>
-          <p class="text-sm text-notion-muted mb-4">
-            Resumen de rendimiento de los equipos en la competición.
-            <span v-if="authStore.isAdmin" class="ml-1">
-              Como administrador puedes gestionar equipos y partidos desde los
-              paneles de administración.
-            </span>
-          </p>
-
-          <ClasificacionTable />
-        </div>
-      </section>
-
-      <!-- Calendario -->
-      <section
-        v-else-if="activeTab === 'calendario'"
-        aria-label="Calendario y próximos partidos"
-      >
-        <div class="space-y-4">
+          <!-- Right side - User Card -->
           <div
-            class="flex flex-col md:flex-row md:items-center md:justify-between gap-3"
+            class="md:w-80 bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl p-6 transition-all duration-500 hover:bg-white/15 hover:border-white/30"
           >
-            <div>
-              <h2 class="text-xl font-semibold text-notion-text">
-                Calendario y próximos partidos
-              </h2>
-              <p class="text-sm text-notion-muted">
-                Consulta la agenda de partidos, utiliza el filtro por día y
-                localiza rápidamente los encuentros de tu equipo.
-              </p>
+            <div class="flex items-center gap-4 mb-5">
+              <div
+                class="w-16 h-16 rounded-xl bg-gradient-to-br from-secondary/30 to-secondary/10 flex items-center justify-center text-3xl font-black text-secondary border border-secondary/30"
+              >
+                {{ (authStore.userName || "U")?.charAt(0).toUpperCase() }}
+              </div>
+              <div class="flex-1 min-w-0">
+                <p class="text-white font-bold text-base truncate">
+                  {{ authStore.userName || "Usuario" }}
+                </p>
+                <p class="text-white/60 text-xs mt-1">{{ userRoleLabel }}</p>
+              </div>
+            </div>
+
+            <div class="space-y-2">
+              <div
+                v-if="authStore.isAdmin"
+                class="px-3 py-2 rounded-lg bg-primary/20 border border-primary/30 text-xs font-semibold text-center"
+              >
+                🔐 Acceso administrador
+              </div>
+              <div
+                v-else-if="authStore.isCapitan"
+                class="px-3 py-2 rounded-lg bg-secondary/20 border border-secondary/30 text-secondary text-xs font-semibold text-center"
+              >
+                ⚽ Acceso capitán
+              </div>
+              <div
+                v-else-if="authStore.isJugador"
+                class="px-3 py-2 rounded-lg bg-tertiary/20 border border-tertiary/30 text-tertiary text-xs font-semibold text-center"
+              >
+                👤 Acceso jugador
+              </div>
             </div>
           </div>
-
-          <CalendarioIntranet />
         </div>
-      </section>
+      </div>
+    </section>
 
-      <!-- Rankings -->
-      <section
-        v-else-if="activeTab === 'rankings'"
-        aria-label="Rankings de jugadores"
-      >
-        <div class="space-y-3">
-          <div>
-            <h2 class="text-xl font-semibold text-notion-text mb-1">
-              Rankings de jugadores
-            </h2>
-            <p class="text-sm text-notion-muted">
-              Consulta el rendimiento de los jugadores según las estadísticas
-              registradas por partido.
+    <!-- Tabs Navigation -->
+    <section
+      class="border-b border-notion-border/60 bg-white sticky top-0 z-40"
+    >
+      <div class="page-container">
+        <nav
+          class="flex gap-1 overflow-x-auto"
+          aria-label="Pestañas de intranet"
+        >
+          <button
+            v-for="tab in tabs"
+            :key="tab.id"
+            type="button"
+            @click="activeTab = tab.id"
+            :class="[
+              'group relative px-5 py-4 text-sm font-semibold whitespace-nowrap transition-all duration-300 flex items-center gap-2',
+              activeTab === tab.id
+                ? 'text-primary'
+                : 'text-notion-muted hover:text-notion-text',
+            ]"
+          >
+            <component
+              :is="tab.icon"
+              :class="[
+                'w-4 h-4 transition-transform duration-300',
+                activeTab === tab.id
+                  ? 'text-primary'
+                  : 'text-notion-muted group-hover:text-notion-text',
+              ]"
+            />
+            {{ tab.label }}
+
+            <!-- Underline animation -->
+            <div
+              :class="[
+                'absolute bottom-0 left-0 h-0.5 bg-gradient-to-r from-primary via-primary-400 to-secondary transition-all duration-300',
+                activeTab === tab.id ? 'w-full' : 'w-0 group-hover:w-1/2',
+              ]"
+            ></div>
+          </button>
+        </nav>
+      </div>
+    </section>
+
+    <!-- Content Sections -->
+    <section class="bg-white py-12 md:py-16">
+      <div class="page-container">
+        <!-- Clasificación -->
+        <div
+          v-if="activeTab === 'clasificacion'"
+          :ref="(el) => observe(el, 'clasificacion')"
+          class="transition-all duration-700 ease-out"
+          :class="
+            isVisible('clasificacion')
+              ? 'opacity-100 translate-y-0'
+              : 'opacity-0 translate-y-8'
+          "
+        >
+          <div class="mb-8">
+            <div class="flex items-center gap-3 mb-3">
+              <span class="w-1 h-6 bg-primary rounded-full"></span>
+              <h2 class="text-3xl md:text-4xl font-bold text-notion-text">
+                Tabla de Clasificación
+              </h2>
+            </div>
+            <p class="text-notion-muted max-w-2xl">
+              Resumen de rendimiento de los equipos en la competición.
+              <span v-if="authStore.isAdmin" class="block mt-1 text-xs">
+                Como administrador, puedes gestionar equipos y partidos desde
+                los paneles de administración.
+              </span>
             </p>
           </div>
 
-          <RankingsPage :hide-header="true" />
+          <div
+            class="bg-gradient-to-br from-notion-bg/60 to-primary-50/30 rounded-2xl border border-notion-border/40 p-8 backdrop-blur-sm"
+          >
+            <ClasificacionTable />
+          </div>
         </div>
-      </section>
 
-      <!-- Torneo -->
-      <section v-else-if="activeTab === 'torneo'" aria-label="Cuadro de torneo">
-        <div class="space-y-3">
-          <div>
-            <h2 class="text-xl font-semibold text-notion-text mb-1">
-              Torneo eliminatorio
-            </h2>
-            <p class="text-sm text-notion-muted">
+        <!-- Calendario -->
+        <div
+          v-else-if="activeTab === 'calendario'"
+          :ref="(el) => observe(el, 'calendario')"
+          class="transition-all duration-700 ease-out"
+          :class="
+            isVisible('calendario')
+              ? 'opacity-100 translate-y-0'
+              : 'opacity-0 translate-y-8'
+          "
+        >
+          <div class="mb-8">
+            <div class="flex items-center gap-3 mb-3">
+              <span class="w-1 h-6 bg-primary rounded-full"></span>
+              <h2 class="text-3xl md:text-4xl font-bold text-notion-text">
+                Calendario y Próximos Partidos
+              </h2>
+            </div>
+            <p class="text-notion-muted max-w-2xl">
+              Consulta la agenda completa de partidos, utiliza los filtros por
+              día y localiza rápidamente los encuentros de tu equipo.
+            </p>
+          </div>
+
+          <div
+            class="bg-gradient-to-br from-notion-bg/60 to-primary-50/30 rounded-2xl border border-notion-border/40 p-8 backdrop-blur-sm"
+          >
+            <CalendarioIntranet />
+          </div>
+        </div>
+
+        <!-- Rankings -->
+        <div
+          v-else-if="activeTab === 'rankings'"
+          :ref="(el) => observe(el, 'rankings')"
+          class="transition-all duration-700 ease-out"
+          :class="
+            isVisible('rankings')
+              ? 'opacity-100 translate-y-0'
+              : 'opacity-0 translate-y-8'
+          "
+        >
+          <div class="mb-8">
+            <div class="flex items-center gap-3 mb-3">
+              <span class="w-1 h-6 bg-primary rounded-full"></span>
+              <h2 class="text-3xl md:text-4xl font-bold text-notion-text">
+                Rankings de Jugadores
+              </h2>
+            </div>
+            <p class="text-notion-muted max-w-2xl">
+              Consulta el rendimiento de los jugadores según las estadísticas
+              registradas en cada partido.
+            </p>
+          </div>
+
+          <div
+            class="bg-gradient-to-br from-notion-bg/60 to-secondary-50/20 rounded-2xl border border-notion-border/40 p-8 backdrop-blur-sm overflow-hidden"
+          >
+            <RankingsPage :hide-header="true" />
+          </div>
+        </div>
+
+        <!-- Torneo -->
+        <div
+          v-else-if="activeTab === 'torneo'"
+          :ref="(el) => observe(el, 'torneo')"
+          class="transition-all duration-700 ease-out"
+          :class="
+            isVisible('torneo')
+              ? 'opacity-100 translate-y-0'
+              : 'opacity-0 translate-y-8'
+          "
+        >
+          <div class="mb-8">
+            <div class="flex items-center gap-3 mb-3">
+              <span class="w-1 h-6 bg-primary rounded-full"></span>
+              <h2 class="text-3xl md:text-4xl font-bold text-notion-text">
+                Torneo Eliminatorio
+              </h2>
+            </div>
+            <p class="text-notion-muted max-w-2xl">
               Visualiza el cuadro del torneo y realiza el sorteo aleatorio de
               posiciones para los equipos participantes.
             </p>
           </div>
 
-          <TournamentBracket />
+          <div
+            class="bg-gradient-to-br from-notion-bg/60 to-tertiary-50/20 rounded-2xl border border-notion-border/40 p-8 backdrop-blur-sm"
+          >
+            <TournamentBracket />
+          </div>
         </div>
-      </section>
-    </div>
+      </div>
+    </section>
   </div>
 </template>
+
+<style scoped>
+/* Smooth page transitions */
+.page-container {
+  @apply transition-all duration-700 ease-out;
+}
+
+/* Tabs animation */
+nav button {
+  position: relative;
+}
+
+nav button::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  width: 0;
+  background: linear-gradient(
+    to right,
+    var(--color-primary),
+    var(--color-secondary)
+  );
+  transition: width 0.3s ease-out;
+}
+
+nav button.active::after,
+nav button:hover::after {
+  width: 100%;
+}
+
+/* Content cards animation */
+@keyframes slideInUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+section > div:first-child {
+  animation: slideInUp 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Subtle hover effects on cards */
+:deep(.card) {
+  @apply transition-all duration-300 hover:shadow-lg;
+}
+
+/* User card glow effect on hover */
+div[class*="bg-white/10"] {
+  @apply transition-all duration-500;
+}
+
+div[class*="bg-white/10"]:hover {
+  box-shadow: 0 0 30px rgba(22, 75, 240, 0.15);
+}
+
+/* Tab underline accent */
+nav button:active,
+nav button.router-link-active {
+  @apply text-primary;
+}
+
+/* Responsive text sizing */
+@media (max-width: 768px) {
+  h2 {
+    @apply text-2xl;
+  }
+
+  p {
+    @apply text-sm;
+  }
+}
+
+/* Smooth color transitions */
+* {
+  @apply transition-colors duration-300;
+}
+</style>
