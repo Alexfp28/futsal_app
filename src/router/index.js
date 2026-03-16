@@ -270,9 +270,12 @@ router.beforeEach(async (to, from, next) => {
 
   const authStore = useAuthStore();
 
-  // Si no está inicializado, inicializar y esperar a que termine
+  // Si no está inicializado, inicializar con timeout de seguridad
   if (!authStore.initialized) {
-    await authStore.initialize();
+    await Promise.race([
+      authStore.initialize(),
+      new Promise((resolve) => setTimeout(resolve, 12000)),
+    ]);
   }
 
   // Verificar si la ruta requiere autenticación

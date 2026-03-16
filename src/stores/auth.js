@@ -197,11 +197,16 @@ export const useAuthStore = defineStore("auth", {
         return;
       }
 
-      // Si ya está inicializando, esperar a que termine
+      // Si ya está inicializando, esperar a que termine (máximo 10s para evitar freeze)
       if (this.initializing) {
         console.log("[AUTH] ⏳ Inicialización en progreso, esperando...");
-        while (this.initializing) {
+        const maxWait = Date.now() + 10000;
+        while (this.initializing && Date.now() < maxWait) {
           await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+        if (this.initializing) {
+          console.warn("[AUTH] ⚠️ Timeout esperando inicialización, continuando con estado actual");
+          this.initializing = false;
         }
         console.log("[AUTH] ✓ Espera de inicialización completada");
         return;
@@ -222,12 +227,15 @@ export const useAuthStore = defineStore("auth", {
         // 2. Segundo: Configurar listener de auth
         this.setupAuthListener();
 
-        // 3. Tercero: Verificar sesión con Supabase
+        // 3. Tercero: Verificar sesión con Supabase (con timeout para evitar freeze)
         console.log("[AUTH] 🔍 Verificando sesión con Supabase...");
+        const sessionTimeout = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("getSession timeout")), 8000),
+        );
         const {
           data: { session },
           error: sessionError,
-        } = await supabase.auth.getSession();
+        } = await Promise.race([supabase.auth.getSession(), sessionTimeout]);
 
         if (sessionError) {
           console.error("[AUTH] ❌ Error al obtener sesión:", sessionError);
