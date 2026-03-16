@@ -1,7 +1,6 @@
 <script setup>
 import { ref, computed } from "vue";
 import { useAuthStore } from "@/stores/auth";
-import { useScrollReveal } from "@/composables/useScrollReveal";
 import ClasificacionTable from "@/components/intranet/ClasificacionTable.vue";
 import CalendarioIntranet from "@/components/intranet/CalendarioIntranet.vue";
 import RankingsPage from "@/pages/public/RankingsPage.vue";
@@ -14,7 +13,6 @@ import {
 } from "@heroicons/vue/24/outline";
 
 const authStore = useAuthStore();
-const { observe, isVisible } = useScrollReveal({ threshold: 0.12 });
 
 const tabs = [
   { id: "clasificacion", label: "Clasificación", icon: ShieldCheckIcon },
@@ -192,16 +190,7 @@ const userRoleLabel = computed(() => {
     <section class="bg-white py-12 md:py-16">
       <div class="page-container">
         <!-- Clasificación -->
-        <div
-          v-if="activeTab === 'clasificacion'"
-          :ref="(el) => observe(el, 'clasificacion')"
-          class="transition-all duration-700 ease-out"
-          :class="
-            isVisible('clasificacion')
-              ? 'opacity-100 translate-y-0'
-              : 'opacity-0 translate-y-8'
-          "
-        >
+        <div v-show="activeTab === 'clasificacion'" class="tab-section">
           <div class="mb-8">
             <div class="flex items-center gap-3 mb-3">
               <span class="w-1 h-6 bg-primary rounded-full"></span>
@@ -226,16 +215,7 @@ const userRoleLabel = computed(() => {
         </div>
 
         <!-- Calendario -->
-        <div
-          v-else-if="activeTab === 'calendario'"
-          :ref="(el) => observe(el, 'calendario')"
-          class="transition-all duration-700 ease-out"
-          :class="
-            isVisible('calendario')
-              ? 'opacity-100 translate-y-0'
-              : 'opacity-0 translate-y-8'
-          "
-        >
+        <div v-show="activeTab === 'calendario'" class="tab-section">
           <div class="mb-8">
             <div class="flex items-center gap-3 mb-3">
               <span class="w-1 h-6 bg-primary rounded-full"></span>
@@ -257,16 +237,7 @@ const userRoleLabel = computed(() => {
         </div>
 
         <!-- Rankings -->
-        <div
-          v-else-if="activeTab === 'rankings'"
-          :ref="(el) => observe(el, 'rankings')"
-          class="transition-all duration-700 ease-out"
-          :class="
-            isVisible('rankings')
-              ? 'opacity-100 translate-y-0'
-              : 'opacity-0 translate-y-8'
-          "
-        >
+        <div v-show="activeTab === 'rankings'" class="tab-section">
           <div class="mb-8">
             <div class="flex items-center gap-3 mb-3">
               <span class="w-1 h-6 bg-primary rounded-full"></span>
@@ -288,16 +259,7 @@ const userRoleLabel = computed(() => {
         </div>
 
         <!-- Torneo -->
-        <div
-          v-else-if="activeTab === 'torneo'"
-          :ref="(el) => observe(el, 'torneo')"
-          class="transition-all duration-700 ease-out"
-          :class="
-            isVisible('torneo')
-              ? 'opacity-100 translate-y-0'
-              : 'opacity-0 translate-y-8'
-          "
-        >
+        <div v-show="activeTab === 'torneo'" class="tab-section">
           <div class="mb-8">
             <div class="flex items-center gap-3 mb-3">
               <span class="w-1 h-6 bg-primary rounded-full"></span>
@@ -328,6 +290,22 @@ const userRoleLabel = computed(() => {
   @apply transition-all duration-700 ease-out;
 }
 
+/* Tab content fade-in animation */
+@keyframes tabFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.tab-section {
+  animation: tabFadeIn 0.35s ease-out;
+}
+
 /* Tabs animation */
 nav button {
   position: relative;
@@ -351,22 +329,6 @@ nav button::after {
 nav button.active::after,
 nav button:hover::after {
   width: 100%;
-}
-
-/* Content cards animation */
-@keyframes slideInUp {
-  from {
-    opacity: 0;
-    transform: translateY(12px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-section > div:first-child {
-  animation: slideInUp 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 /* Subtle hover effects on cards */
