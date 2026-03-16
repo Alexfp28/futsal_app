@@ -222,12 +222,41 @@ export const useAuthStore = defineStore("auth", {
         // 2. Segundo: Configurar listener de auth
         this.setupAuthListener();
 
-        // 3. Tercero: Verificar sesión con Supabase
+        // 3. Tercero: Verificar sesión con Supabase (con timeout para evitar cuelgues)
         console.log("[AUTH] 🔍 Verificando sesión con Supabase...");
-        const {
-          data: { session },
-          error: sessionError,
-        } = await supabase.auth.getSession();
+
+        // Si ya tenemos datos en localStorage, no bloqueamos la UI esperando Supabase
+        // Usamos un timeout de 5s para evitar que la app se quede colgada
+        const SESSION_TIMEOUT_MS = 5000;
+        let session = null;
+        let sessionError = null;
+
+        try {
+          const sessionResult = await Promise.race([
+            supabase.auth.getSession(),
+            new Promise((_, reject) =>
+              setTimeout(
+                () => reject(new Error("getSession timeout")),
+                SESSION_TIMEOUT_MS,
+              ),
+            ),
+          ]);
+          session = sessionResult.data?.session ?? null;
+          sessionError = sessionResult.error ?? null;
+        } catch (timeoutErr) {
+          console.warn("[AUTH] ⚠️ getSession tardó demasiado:", timeoutErr.message);
+          // Si tenemos datos en localStorage, los usamos como sesión válida
+          if (hasStoredAuth && this.user) {
+            console.log("[AUTH] ✓ Usando sesión de localStorage por timeout de Supabase");
+            this.initialized = true;
+            this.loading = false;
+            this.initializing = false;
+            // Reintentar en background cuando haya conexión
+            this._syncSessionInBackground();
+            return;
+          }
+          throw timeoutErr;
+        }
 
         if (sessionError) {
           console.error("[AUTH] ❌ Error al obtener sesión:", sessionError);
@@ -573,6 +602,43 @@ export const useAuthStore = defineStore("auth", {
       } catch (error) {
         console.error("[AUTH] ❌ Excepción al verificar sesión:", error);
         return false;
+      }
+    },
+
+    /**
+     * Sincronizar sesión con Supabase en segundo plano tras un timeout
+     * Verifica la sesión real una vez que la conexión se recupere
+     */
+    async _syncSessionInBackground() {
+      console.log("[AUTH] 🔄 Iniciando sincronización de sesión en background...");
+      // Esperar 3s antes de reintentar para dar tiempo a que se recupere la conexión
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession();
+
+        if (error || !session) {
+          console.warn("[AUTH] ⚠️ Sesión inválida en sync background, limpiando...");
+          this.user = null;
+          this.profile = null;
+          this.initialized = false;
+          this.clearStorage();
+          return;
+        }
+
+        // Sesión válida — actualizar usuario y perfil
+        this.user = session.user;
+        if (!this.profile || this.profile.id !== session.user.id) {
+          try {
+            this.profile = await getUserProfile(session.user.id);
+          } catch (e) {
+            console.warn("[AUTH] Error al obtener perfil en background:", e);
+          }
+        }
+        this.persistAuth();
+        console.log("[AUTH] ✓ Sesión sincronizada correctamente en background");
+      } catch (e) {
+        console.warn("[AUTH] ⚠️ Error en sync background (sin conexión?):", e.message);
       }
     },
 
