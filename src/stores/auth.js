@@ -197,10 +197,11 @@ export const useAuthStore = defineStore("auth", {
         return;
       }
 
-      // Si ya está inicializando, esperar a que termine
+      // Si ya está inicializando, esperar a que termine (máximo 10s para evitar freeze)
       if (this.initializing) {
         console.log("[AUTH] ⏳ Inicialización en progreso, esperando...");
-        while (this.initializing) {
+        const maxWait = Date.now() + 10000;
+        while (this.initializing && Date.now() < maxWait) {
           await new Promise((resolve) => setTimeout(resolve, 100));
         }
         console.log("[AUTH] ✓ Espera de inicialización completada");
@@ -244,10 +245,15 @@ export const useAuthStore = defineStore("auth", {
           session = sessionResult.data?.session ?? null;
           sessionError = sessionResult.error ?? null;
         } catch (timeoutErr) {
-          console.warn("[AUTH] ⚠️ getSession tardó demasiado:", timeoutErr.message);
+          console.warn(
+            "[AUTH] ⚠️ getSession tardó demasiado:",
+            timeoutErr.message,
+          );
           // Si tenemos datos en localStorage, los usamos como sesión válida
           if (hasStoredAuth && this.user) {
-            console.log("[AUTH] ✓ Usando sesión de localStorage por timeout de Supabase");
+            console.log(
+              "[AUTH] ✓ Usando sesión de localStorage por timeout de Supabase",
+            );
             this.initialized = true;
             this.loading = false;
             this.initializing = false;
@@ -610,15 +616,22 @@ export const useAuthStore = defineStore("auth", {
      * Verifica la sesión real una vez que la conexión se recupere
      */
     async _syncSessionInBackground() {
-      console.log("[AUTH] 🔄 Iniciando sincronización de sesión en background...");
+      console.log(
+        "[AUTH] 🔄 Iniciando sincronización de sesión en background...",
+      );
       // Esperar 3s antes de reintentar para dar tiempo a que se recupere la conexión
       await new Promise((resolve) => setTimeout(resolve, 3000));
 
       try {
-        const { data: { session }, error } = await supabase.auth.getSession();
+        const {
+          data: { session },
+          error,
+        } = await supabase.auth.getSession();
 
         if (error || !session) {
-          console.warn("[AUTH] ⚠️ Sesión inválida en sync background, limpiando...");
+          console.warn(
+            "[AUTH] ⚠️ Sesión inválida en sync background, limpiando...",
+          );
           this.user = null;
           this.profile = null;
           this.initialized = false;
@@ -638,7 +651,10 @@ export const useAuthStore = defineStore("auth", {
         this.persistAuth();
         console.log("[AUTH] ✓ Sesión sincronizada correctamente en background");
       } catch (e) {
-        console.warn("[AUTH] ⚠️ Error en sync background (sin conexión?):", e.message);
+        console.warn(
+          "[AUTH] ⚠️ Error en sync background (sin conexión?):",
+          e.message,
+        );
       }
     },
 
