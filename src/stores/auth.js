@@ -5,9 +5,9 @@ import { supabase, getUserProfile } from "@/lib/supabase";
 const STORAGE_KEY_USER = "auth_user";
 const STORAGE_KEY_PROFILE = "auth_profile";
 
-// Timeouts para llamadas a Supabase
-const SESSION_TIMEOUT_MS = 5000;
-const PROFILE_TIMEOUT_MS = 5000;
+// Timeouts para llamadas a Supabase (solo se aplican cuando no hay caché)
+const SESSION_TIMEOUT_MS = 3000;
+const PROFILE_TIMEOUT_MS = 3000;
 
 // Promise compartida para inicialización — evita race conditions y polling
 let _initPromise = null;
@@ -174,7 +174,16 @@ export const useAuthStore = defineStore("auth", {
         // 2. Configurar listener de auth (idempotente)
         this.setupAuthListener();
 
-        // 3. Verificar sesión con Supabase (con timeout)
+        // 3. Si hay datos cacheados, inicializar de inmediato y verificar en background.
+        //    Esto evita bloquear la navegación esperando respuesta de Supabase.
+        if (hasStoredAuth && this.user) {
+          this.initialized = true;
+          this.loading = false;
+          this._syncSessionInBackground(0);
+          return;
+        }
+
+        // 4. Sin cache: verificar sesión con Supabase (usuario nuevo o sesión cerrada)
         let session = null;
 
         try {
@@ -193,62 +202,33 @@ export const useAuthStore = defineStore("auth", {
           }
         } catch (timeoutErr) {
           console.warn("[AUTH] getSession timeout:", timeoutErr.message);
-          // Si tenemos datos en cache, usarlos y sincronizar en background
-          if (hasStoredAuth && this.user) {
-            this.initialized = true;
-            this._syncSessionInBackground();
-            return;
-          }
-          // Sin cache: marcar como inicializado sin usuario
+          // Sin cache y sin respuesta: marcar como inicializado sin usuario
           this.initialized = true;
           return;
         }
 
         if (session?.user) {
-          // Sesión activa — actualizar usuario si cambió
-          if (this.user?.id !== session.user.id) {
-            this.user = session.user;
-          }
+          this.user = session.user;
 
-          // Cargar perfil si no existe o si es diferente
-          if (!this.profile || this.profile.id !== session.user.id) {
-            try {
-              this.profile = await withTimeout(
-                getUserProfile(session.user.id),
-                PROFILE_TIMEOUT_MS,
-                "getUserProfile",
-              );
-            } catch (profileError) {
-              console.error("[AUTH] Error al obtener perfil:", profileError);
-              // Si hay perfil en cache, mantenerlo
-              if (!this.profile) {
-                this.error = "No se pudo cargar el perfil";
-              }
-            }
+          try {
+            this.profile = await withTimeout(
+              getUserProfile(session.user.id),
+              PROFILE_TIMEOUT_MS,
+              "getUserProfile",
+            );
+          } catch (profileError) {
+            console.error("[AUTH] Error al obtener perfil:", profileError);
+            this.error = "No se pudo cargar el perfil";
           }
 
           this.persistAuth();
-        } else {
-          // No hay sesión en Supabase — limpiar cache si existía
-          if (hasStoredAuth) {
-            this.user = null;
-            this.profile = null;
-            this.clearStorage();
-          }
         }
 
         this.initialized = true;
       } catch (error) {
         console.error("[AUTH] Error en inicialización:", error);
         this.error = error.message || "Error al inicializar autenticación";
-
-        // Si tenemos datos de cache, mantener sesión
-        if (this.user) {
-          this.initialized = true;
-        } else {
-          // Sin datos: marcar como inicializado sin usuario para no bloquear
-          this.initialized = true;
-        }
+        this.initialized = true;
       } finally {
         this.loading = false;
       }
@@ -464,9 +444,10 @@ export const useAuthStore = defineStore("auth", {
       }
     },
 
-    async _syncSessionInBackground() {
-      // Esperar antes de reintentar para dar tiempo a recuperar conexión
-      await new Promise((resolve) => setTimeout(resolve, 3000));
+    async _syncSessionInBackground(delay = 3000) {
+      if (delay > 0) {
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
 
       try {
         const {
@@ -475,9 +456,9 @@ export const useAuthStore = defineStore("auth", {
         } = await supabase.auth.getSession();
 
         if (error || !session) {
+          // Sesión inválida: limpiar estado (Vue reaccionará y el guard redirigirá)
           this.user = null;
           this.profile = null;
-          this.initialized = false;
           this.clearStorage();
           return;
         }
