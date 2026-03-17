@@ -1,14 +1,6 @@
 <script setup>
-import { onMounted } from "vue";
-import { useAuthStore } from "@/stores/auth";
 import Navbar from "@/components/layout/Navbar.vue";
 import Footer from "@/components/layout/Footer.vue";
-
-const authStore = useAuthStore();
-
-onMounted(() => {
-  authStore.initialize();
-});
 </script>
 
 <template>
