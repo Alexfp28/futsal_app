@@ -213,18 +213,23 @@ const creatingTemporada = ref(false);
 const temporadaError = ref("");
 const temporadaSuccess = ref("");
 
-const defaultTemporadaForm = () => ({
-  nombre: `Temporada ${new Date().getFullYear()}-${new Date().getFullYear() + 1}`,
-  año_inicio: new Date().getFullYear(),
-  año_fin: new Date().getFullYear() + 1,
-  fecha_inicio: "",
-  semanas_entre_jornadas: 1,
-  hora_inicio: "17:00",
-  hora_fin: "20:00",
-  duracion_partido: 60,
-  lugar: "Polideportivo Municipal",
-  equipos_seleccionados: [],
-});
+const defaultTemporadaForm = () => {
+  const currentYear = new Date().getFullYear();
+  const nextYear = currentYear + 1;
+  return {
+    nombre: `Temporada ${currentYear}-${nextYear}`,
+    mes_inicio: `${currentYear}-09`,
+    mes_fin: `${nextYear}-06`,
+    fecha_inicio: "",
+    semanas_entre_jornadas: 1,
+    hora_inicio: "17:00",
+    hora_fin: "20:00",
+    duracion_partido: 60,
+    lugar: "Polideportivo Municipal",
+    equipos_seleccionados: [],
+    incluir_vuelta: false,
+  };
+};
 
 const temporadaForm = ref(defaultTemporadaForm());
 
@@ -326,6 +331,7 @@ const previewSchedule = computed(() => {
     equipos_seleccionados,
     fecha_inicio,
     semanas_entre_jornadas,
+    incluir_vuelta,
   } = temporadaForm.value;
 
   if (!equipos_seleccionados.length || !fecha_inicio) return [];
@@ -333,24 +339,19 @@ const previewSchedule = computed(() => {
   const slots = timeSlots.value;
   if (!slots.length) return [];
 
-  const rounds = generateRoundRobin(equipos_seleccionados);
+  const idaRounds = generateRoundRobin(equipos_seleccionados);
   const equipoMap = Object.fromEntries(
     equipos.value.map((e) => [e.id, e.nombre])
   );
 
-  return rounds.map((matches, roundIndex) => {
-    // Fecha de esta jornada
+  const buildJornada = (matches, globalIndex, fase) => {
     const roundDate = new Date(fecha_inicio + "T12:00:00");
     roundDate.setDate(
-      roundDate.getDate() + roundIndex * parseInt(semanas_entre_jornadas) * 7
+      roundDate.getDate() + globalIndex * parseInt(semanas_entre_jornadas) * 7
     );
 
-    // Rotar slots: jornada N empieza en slot N % total
-    const offset = roundIndex % slots.length;
-    const rotatedSlots = [
-      ...slots.slice(offset),
-      ...slots.slice(0, offset),
-    ];
+    const offset = globalIndex % slots.length;
+    const rotatedSlots = [...slots.slice(offset), ...slots.slice(0, offset)];
 
     const partidosJornada = matches.map((match, matchIndex) => {
       const slot = rotatedSlots[matchIndex % rotatedSlots.length];
@@ -368,13 +369,39 @@ const previewSchedule = computed(() => {
       };
     });
 
+    const numero = globalIndex + 1;
+    const sufijo = incluir_vuelta ? (fase === "ida" ? " (Ida)" : " (Vuelta)") : "";
+
     return {
-      numero: roundIndex + 1,
-      nombre: `Jornada ${roundIndex + 1}`,
+      numero,
+      nombre: `Jornada ${numero}${sufijo}`,
+      fase,
       fecha: new Date(roundDate),
       partidos: partidosJornada,
     };
-  });
+  };
+
+  const schedule = idaRounds.map((matches, roundIndex) =>
+    buildJornada(matches, roundIndex, "ida")
+  );
+
+  if (incluir_vuelta) {
+    idaRounds.forEach((matches, roundIndex) => {
+      const vueltaMatches = matches.map((m) => ({ home: m.away, away: m.home }));
+      schedule.push(buildJornada(vueltaMatches, idaRounds.length + roundIndex, "vuelta"));
+    });
+  }
+
+  return schedule;
+});
+
+// Resumen de jornadas para el paso 1
+const resumenJornadas = computed(() => {
+  const n = temporadaForm.value.equipos_seleccionados.length;
+  if (n < 2) return { jornadas: 0, partidosPorJornada: 0 };
+  const idaJornadas = n % 2 === 0 ? n - 1 : n;
+  const totalJornadas = temporadaForm.value.incluir_vuelta ? idaJornadas * 2 : idaJornadas;
+  return { jornadas: totalJornadas, partidosPorJornada: Math.floor(n / 2) };
 });
 
 // Validaciones por paso
@@ -382,8 +409,9 @@ const canGoToStep2 = computed(() => {
   const f = temporadaForm.value;
   return (
     f.nombre.trim() &&
-    f.año_inicio &&
-    f.año_fin &&
+    f.mes_inicio &&
+    f.mes_fin &&
+    f.mes_inicio <= f.mes_fin &&
     f.equipos_seleccionados.length >= 2
   );
 });
@@ -428,7 +456,9 @@ const crearTemporada = async () => {
   temporadaError.value = "";
 
   try {
-    const { nombre, año_inicio, año_fin, lugar } = temporadaForm.value;
+    const { nombre, mes_inicio, mes_fin, lugar } = temporadaForm.value;
+    const año_inicio = parseInt(mes_inicio.split("-")[0]);
+    const año_fin = parseInt(mes_fin.split("-")[0]);
     const preview = previewSchedule.value;
 
     if (!preview.length) throw new Error("No hay jornadas para crear.");
@@ -755,13 +785,18 @@ const crearTemporada = async () => {
 
             <div class="grid grid-cols-2 gap-4">
               <div>
-                <label class="block text-sm font-medium text-notion-text mb-2">Año de inicio</label>
-                <input v-model="temporadaForm.año_inicio" type="number" class="input" min="2020" max="2099" />
+                <label class="block text-sm font-medium text-notion-text mb-2">Inicio de temporada</label>
+                <input v-model="temporadaForm.mes_inicio" type="month" class="input" />
+                <p class="text-xs text-notion-muted mt-1">Mes y año de inicio</p>
               </div>
               <div>
-                <label class="block text-sm font-medium text-notion-text mb-2">Año de fin</label>
-                <input v-model="temporadaForm.año_fin" type="number" class="input" min="2020" max="2099" />
+                <label class="block text-sm font-medium text-notion-text mb-2">Fin de temporada</label>
+                <input v-model="temporadaForm.mes_fin" type="month" class="input" />
+                <p class="text-xs text-notion-muted mt-1">Mes y año de fin</p>
               </div>
+            </div>
+            <div v-if="temporadaForm.mes_inicio && temporadaForm.mes_fin && temporadaForm.mes_inicio > temporadaForm.mes_fin" class="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-600">
+              El mes de inicio debe ser anterior al mes de fin
             </div>
 
             <div>
@@ -797,15 +832,33 @@ const crearTemporada = async () => {
               </div>
               <p class="text-xs text-notion-muted mt-2">
                 {{ temporadaForm.equipos_seleccionados.length }} equipos seleccionados →
-                {{ temporadaForm.equipos_seleccionados.length >= 2
-                    ? (temporadaForm.equipos_seleccionados.length % 2 === 0
-                        ? temporadaForm.equipos_seleccionados.length - 1
-                        : temporadaForm.equipos_seleccionados.length)
-                    : 0 }} jornadas,
-                {{ temporadaForm.equipos_seleccionados.length >= 2
-                    ? Math.floor(temporadaForm.equipos_seleccionados.length / 2)
-                    : 0 }} partidos por jornada
+                {{ resumenJornadas.jornadas }} jornadas
+                <span v-if="temporadaForm.incluir_vuelta" class="text-primary font-medium">(ida + vuelta)</span>,
+                {{ resumenJornadas.partidosPorJornada }} partidos por jornada
               </p>
+            </div>
+
+            <!-- Toggle ida/vuelta -->
+            <div class="flex items-center justify-between p-4 bg-notion-bg rounded-lg border border-notion-border">
+              <div>
+                <p class="text-sm font-medium text-notion-text">Incluir vuelta</p>
+                <p class="text-xs text-notion-muted mt-0.5">Genera una segunda fase repitiendo cada partido con los equipos invertidos</p>
+              </div>
+              <button
+                type="button"
+                @click="temporadaForm.incluir_vuelta = !temporadaForm.incluir_vuelta"
+                :class="[
+                  'relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors',
+                  temporadaForm.incluir_vuelta ? 'bg-primary' : 'bg-gray-300',
+                ]"
+              >
+                <span
+                  :class="[
+                    'inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform',
+                    temporadaForm.incluir_vuelta ? 'translate-x-6' : 'translate-x-1',
+                  ]"
+                />
+              </button>
             </div>
           </div>
 
@@ -891,6 +944,11 @@ const crearTemporada = async () => {
             <!-- Resumen -->
             <div class="bg-primary/5 border border-primary/20 rounded-lg p-4 mb-5">
               <h3 class="font-semibold text-primary mb-1">{{ temporadaForm.nombre }}</h3>
+              <div v-if="temporadaForm.incluir_vuelta" class="flex gap-2 mt-1 mb-3">
+                <span class="text-xs bg-blue-100 text-blue-700 font-semibold px-2 py-0.5 rounded-full">IDA</span>
+                <span class="text-xs text-notion-muted">+</span>
+                <span class="text-xs bg-orange-100 text-orange-700 font-semibold px-2 py-0.5 rounded-full">VUELTA</span>
+              </div>
               <div class="grid grid-cols-3 gap-3 text-sm mt-3">
                 <div class="text-center">
                   <p class="text-2xl font-bold text-notion-text">{{ previewSchedule.length }}</p>
@@ -917,7 +975,20 @@ const crearTemporada = async () => {
                 class="border border-notion-border rounded-lg overflow-hidden"
               >
                 <div class="bg-notion-bg px-4 py-2 flex items-center justify-between">
-                  <span class="font-medium text-notion-text text-sm">{{ jornada.nombre }}</span>
+                  <div class="flex items-center gap-2">
+                    <span class="font-medium text-notion-text text-sm">{{ jornada.nombre }}</span>
+                    <span
+                      v-if="temporadaForm.incluir_vuelta"
+                      :class="[
+                        'text-xs font-semibold px-2 py-0.5 rounded-full',
+                        jornada.fase === 'ida'
+                          ? 'bg-blue-100 text-blue-700'
+                          : 'bg-orange-100 text-orange-700',
+                      ]"
+                    >
+                      {{ jornada.fase === "ida" ? "IDA" : "VUELTA" }}
+                    </span>
+                  </div>
                   <span class="text-xs text-notion-muted">{{ formatPreviewDate(jornada.fecha) }}</span>
                 </div>
                 <div class="divide-y divide-notion-border">
