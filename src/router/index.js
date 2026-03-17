@@ -270,7 +270,17 @@ router.beforeEach(async (to, from, next) => {
 
   const authStore = useAuthStore();
 
-  // Inicializar auth si no está listo (el store maneja sus propios timeouts)
+  // Rutas públicas (sin requiresAuth ni guest): arrancar inicialización sin bloquear.
+  // La hidratación desde localStorage es inmediata; la verificación con Supabase
+  // ocurre en background y Vue reaccionará si cambia el estado.
+  if (!meta.requiresAuth && !meta.guest) {
+    if (!authStore.initialized) {
+      authStore.initialize();
+    }
+    return next();
+  }
+
+  // Rutas protegidas o de invitado: necesitamos el estado de auth para decidir
   if (!authStore.initialized) {
     await authStore.initialize();
   }
