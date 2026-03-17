@@ -5,6 +5,26 @@ import { supabase, getUserProfile } from "@/lib/supabase";
 const STORAGE_KEY_USER = "auth_user";
 const STORAGE_KEY_PROFILE = "auth_profile";
 
+// Timeouts para llamadas a Supabase
+const SESSION_TIMEOUT_MS = 5000;
+const PROFILE_TIMEOUT_MS = 5000;
+
+// Promise compartida para inicialización — evita race conditions y polling
+let _initPromise = null;
+
+/**
+ * Ejecuta una promesa con timeout. Si la promesa no se resuelve en `ms` milisegundos,
+ * se rechaza con un error descriptivo.
+ */
+function withTimeout(promise, ms, label) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error(`${label} timeout (${ms}ms)`)), ms),
+    ),
+  ]);
+}
+
 export const useAuthStore = defineStore("auth", {
   state: () => ({
     user: null,
@@ -12,7 +32,6 @@ export const useAuthStore = defineStore("auth", {
     loading: false,
     error: null,
     initialized: false,
-    initializing: false, // Nuevo flag para evitar múltiples inicializaciones
   }),
 
   getters: {
@@ -22,69 +41,44 @@ export const useAuthStore = defineStore("auth", {
     isJugador: (state) => state.profile?.rol === "jugador",
     userRole: (state) => state.profile?.rol || null,
     userName: (state) => state.profile?.nombre || "Usuario",
-    // Nuevo getter para verificar si está cargando la autenticación
     isLoadingAuth: (state) => state.loading && !state.initialized,
   },
 
   actions: {
     // ============================================
-    // MÉTODOS DE PERSISTENCIA LOCAL
+    // PERSISTENCIA LOCAL
     // ============================================
 
-    /**
-     * Guardar estado de autenticación en localStorage para recuperación rápida
-     * Esto proporciona una capa de respaldo antes de que Supabase cargue
-     */
     persistAuth() {
       try {
         if (this.user) {
           localStorage.setItem(STORAGE_KEY_USER, JSON.stringify(this.user));
-          console.log("[AUTH] ✓ Usuario persistido en localStorage");
         } else {
           localStorage.removeItem(STORAGE_KEY_USER);
-          console.log("[AUTH] ✓ Usuario eliminado de localStorage");
         }
-
         if (this.profile) {
           localStorage.setItem(
             STORAGE_KEY_PROFILE,
             JSON.stringify(this.profile),
           );
-          console.log("[AUTH] ✓ Perfil persistido en localStorage");
         } else {
           localStorage.removeItem(STORAGE_KEY_PROFILE);
-          console.log("[AUTH] ✓ Perfil eliminado de localStorage");
         }
       } catch (error) {
         console.error("[AUTH] Error al persistir estado:", error);
       }
     },
 
-    /**
-     * Recuperar estado de autenticación desde localStorage
-     * Útil para mostrarUI inmediata mientras Supabase carga
-     */
     hydrateFromStorage() {
       try {
         const storedUser = localStorage.getItem(STORAGE_KEY_USER);
         const storedProfile = localStorage.getItem(STORAGE_KEY_PROFILE);
 
         if (storedUser) {
-          const user = JSON.parse(storedUser);
-          this.user = user;
-          console.log(
-            "[AUTH] ✓ Usuario restaurado desde localStorage:",
-            user.id,
-          );
+          this.user = JSON.parse(storedUser);
         }
-
         if (storedProfile) {
-          const profile = JSON.parse(storedProfile);
-          this.profile = profile;
-          console.log(
-            "[AUTH] ✓ Perfil restaurado desde localStorage:",
-            profile.rol,
-          );
+          this.profile = JSON.parse(storedProfile);
         }
 
         return !!storedUser;
@@ -95,48 +89,31 @@ export const useAuthStore = defineStore("auth", {
       }
     },
 
-    /**
-     * Limpiar datos de persistencia local
-     */
     clearStorage() {
       localStorage.removeItem(STORAGE_KEY_USER);
       localStorage.removeItem(STORAGE_KEY_PROFILE);
-      console.log("[AUTH] ✓ Datos de localStorage eliminados");
     },
 
     // ============================================
-    // CONFIGURACIÓN DEL LISTENER DE AUTH
+    // LISTENER DE AUTH
     // ============================================
 
-    // Flag para evitar múltiples suscripciones al listener
     _authListenerSetup: false,
 
-    /**
-     * Configurar listener de cambios de auth (solo una vez)
-     */
     setupAuthListener() {
-      if (this._authListenerSetup) {
-        console.log("[AUTH] Listener de auth ya configurado, omitiendo...");
-        return;
-      }
-
-      console.log("[AUTH] 🔄 Configurando listener de onAuthStateChange...");
+      if (this._authListenerSetup) return;
 
       supabase.auth.onAuthStateChange(async (event, session) => {
-        console.log(
-          "[AUTH] 📡 Evento de auth recibido:",
-          event,
-          session ? session.user.id : "sin sesión",
-        );
-
         switch (event) {
           case "SIGNED_IN":
             if (session?.user) {
-              console.log("[AUTH] → Usuario autenticado, cargando perfil...");
               this.user = session.user;
               try {
-                this.profile = await getUserProfile(session.user.id);
-                console.log("[AUTH] ✓ Perfil cargado correctamente");
+                this.profile = await withTimeout(
+                  getUserProfile(session.user.id),
+                  PROFILE_TIMEOUT_MS,
+                  "getUserProfile (listener)",
+                );
                 this.persistAuth();
               } catch (error) {
                 console.error("[AUTH] Error al obtener perfil:", error);
@@ -146,7 +123,6 @@ export const useAuthStore = defineStore("auth", {
             break;
 
           case "SIGNED_OUT":
-            console.log("[AUTH] → Sesión cerrada, limpiando estado...");
             this.user = null;
             this.profile = null;
             this.initialized = false;
@@ -154,7 +130,6 @@ export const useAuthStore = defineStore("auth", {
             break;
 
           case "TOKEN_REFRESHED":
-            console.log("[AUTH] → Token refrescado, sesión válida");
             if (session?.user) {
               this.user = session.user;
               this.persistAuth();
@@ -162,20 +137,15 @@ export const useAuthStore = defineStore("auth", {
             break;
 
           case "USER_UPDATED":
-            console.log("[AUTH] → Usuario actualizado");
             if (session?.user) {
               this.user = session.user;
               this.persistAuth();
             }
             break;
-
-          default:
-            console.log("[AUTH] 📡 Evento no manejado:", event);
         }
       });
 
       this._authListenerSetup = true;
-      console.log("[AUTH] ✓ Listener configurado correctamente");
     },
 
     // ============================================
@@ -183,169 +153,112 @@ export const useAuthStore = defineStore("auth", {
     // ============================================
 
     async initialize() {
-      console.log("[AUTH] 🚀 Iniciando proceso de inicialización...");
-      console.log(
-        "[AUTH] Estado actual - initialized:",
-        this.initialized,
-        "loading:",
-        this.loading,
-      );
+      // Ya inicializado con usuario — no hacer nada
+      if (this.initialized && this.user) return;
 
-      // Si ya se inicializó completamente, no hacer nada
-      if (this.initialized && this.user) {
-        console.log("[AUTH] ✓ Ya inicializado con usuario, retornando...");
-        return;
-      }
+      // Si ya hay una Promise de inicialización en curso, esperar la misma
+      if (_initPromise) return _initPromise;
 
-      // Si ya está inicializando, esperar a que termine (máximo 10s para evitar freeze)
-      if (this.initializing) {
-        console.log("[AUTH] ⏳ Inicialización en progreso, esperando...");
-        const maxWait = Date.now() + 10000;
-        while (this.initializing && Date.now() < maxWait) {
-          await new Promise((resolve) => setTimeout(resolve, 100));
-        }
-        console.log("[AUTH] ✓ Espera de inicialización completada");
-        return;
-      }
+      // Crear la Promise antes de cualquier await — atómico, sin race condition
+      _initPromise = this._doInitialize();
+      return _initPromise;
+    },
 
-      // Marcar como inicializando ANTES de empezar
-      this.initializing = true;
+    async _doInitialize() {
       this.loading = true;
 
       try {
-        // 1. Primero: Intentar hydrate desde localStorage para UI inmediata
+        // 1. Hydrate desde localStorage para UI inmediata
         const hasStoredAuth = this.hydrateFromStorage();
-        console.log(
-          "[AUTH] Hydrate desde localStorage:",
-          hasStoredAuth ? "exitoso" : "sin datos",
-        );
 
-        // 2. Segundo: Configurar listener de auth
+        // 2. Configurar listener de auth (idempotente)
         this.setupAuthListener();
 
-        // 3. Tercero: Verificar sesión con Supabase (con timeout para evitar cuelgues)
-        console.log("[AUTH] 🔍 Verificando sesión con Supabase...");
-
-        // Si ya tenemos datos en localStorage, no bloqueamos la UI esperando Supabase
-        // Usamos un timeout de 5s para evitar que la app se quede colgada
-        const SESSION_TIMEOUT_MS = 5000;
+        // 3. Verificar sesión con Supabase (con timeout)
         let session = null;
-        let sessionError = null;
 
         try {
-          const sessionResult = await Promise.race([
+          const sessionResult = await withTimeout(
             supabase.auth.getSession(),
-            new Promise((_, reject) =>
-              setTimeout(
-                () => reject(new Error("getSession timeout")),
-                SESSION_TIMEOUT_MS,
-              ),
-            ),
-          ]);
-          session = sessionResult.data?.session ?? null;
-          sessionError = sessionResult.error ?? null;
-        } catch (timeoutErr) {
-          console.warn(
-            "[AUTH] ⚠️ getSession tardó demasiado:",
-            timeoutErr.message,
+            SESSION_TIMEOUT_MS,
+            "getSession",
           );
-          // Si tenemos datos en localStorage, los usamos como sesión válida
-          if (hasStoredAuth && this.user) {
-            console.log(
-              "[AUTH] ✓ Usando sesión de localStorage por timeout de Supabase",
+          session = sessionResult.data?.session ?? null;
+
+          if (sessionResult.error) {
+            console.error(
+              "[AUTH] Error al obtener sesión:",
+              sessionResult.error,
             );
+          }
+        } catch (timeoutErr) {
+          console.warn("[AUTH] getSession timeout:", timeoutErr.message);
+          // Si tenemos datos en cache, usarlos y sincronizar en background
+          if (hasStoredAuth && this.user) {
             this.initialized = true;
-            this.loading = false;
-            this.initializing = false;
-            // Reintentar en background cuando haya conexión
             this._syncSessionInBackground();
             return;
           }
-          throw timeoutErr;
-        }
-
-        if (sessionError) {
-          console.error("[AUTH] ❌ Error al obtener sesión:", sessionError);
-          throw sessionError;
+          // Sin cache: marcar como inicializado sin usuario
+          this.initialized = true;
+          return;
         }
 
         if (session?.user) {
-          console.log(
-            "[AUTH] ✓ Sesión activa encontrada para:",
-            session.user.id,
-          );
-
-          // Verificar si el usuario cambió (por si acaso)
+          // Sesión activa — actualizar usuario si cambió
           if (this.user?.id !== session.user.id) {
-            console.log(
-              "[AUTH] → Usuario diferente al almacenado, actualizando...",
-            );
             this.user = session.user;
           }
 
           // Cargar perfil si no existe o si es diferente
           if (!this.profile || this.profile.id !== session.user.id) {
-            console.log("[AUTH] 🔄 Cargando perfil del usuario...");
             try {
-              this.profile = await getUserProfile(session.user.id);
-              console.log("[AUTH] ✓ Perfil cargado:", this.profile.rol);
+              this.profile = await withTimeout(
+                getUserProfile(session.user.id),
+                PROFILE_TIMEOUT_MS,
+                "getUserProfile",
+              );
             } catch (profileError) {
-              console.error("[AUTH] ❌ Error al obtener perfil:", profileError);
-              // No lanzamos el error para permitir que la app funcione sin perfil
-              this.error = "No se pudo cargar el perfil";
+              console.error("[AUTH] Error al obtener perfil:", profileError);
+              // Si hay perfil en cache, mantenerlo
+              if (!this.profile) {
+                this.error = "No se pudo cargar el perfil";
+              }
             }
           }
 
-          // Persistir estado actualizado
           this.persistAuth();
         } else {
-          console.log("[AUTH] ℹ️ No hay sesión activa en Supabase");
-
-          // Si tenemos datos en localStorage pero no hay sesión en Supabase,
-          //可能是会话过期，需要清理
+          // No hay sesión en Supabase — limpiar cache si existía
           if (hasStoredAuth) {
-            console.log(
-              "[AUTH] ⚠️ Sesión de Supabase expirada, limpiando datos locales...",
-            );
             this.user = null;
             this.profile = null;
             this.clearStorage();
           }
         }
 
-        // 4. Cuarto: Marcar como inicializado DESPUÉS de todo
         this.initialized = true;
-        console.log("[AUTH] ✓ Inicialización completada exitosamente");
       } catch (error) {
-        console.error("[AUTH] ❌ Error en initialize:", error);
+        console.error("[AUTH] Error en inicialización:", error);
         this.error = error.message || "Error al inicializar autenticación";
 
-        // Mantenemos initialized = false para permitir reintento
-        // Pero usamos datos de localStorage si están disponibles
+        // Si tenemos datos de cache, mantener sesión
         if (this.user) {
-          console.log(
-            "[AUTH] ⚠️ Error en Supabase pero tenemos datos locales, manteniendo sesión",
-          );
+          this.initialized = true;
+        } else {
+          // Sin datos: marcar como inicializado sin usuario para no bloquear
           this.initialized = true;
         }
       } finally {
         this.loading = false;
-        this.initializing = false;
-        console.log(
-          "[AUTH] Estado final - initialized:",
-          this.initialized,
-          "user:",
-          this.user?.id,
-        );
       }
     },
 
     // ============================================
-    // OAUTH (GOOGLE, ETC)
+    // OAUTH
     // ============================================
 
     async signInWithGoogle() {
-      console.log("[AUTH] 🔐 Iniciando login con Google...");
       this.loading = true;
       this.error = null;
 
@@ -357,15 +270,11 @@ export const useAuthStore = defineStore("auth", {
           },
         });
 
-        if (error) {
-          console.error("[AUTH] ❌ Error en signInWithOAuth:", error);
-          throw error;
-        }
+        if (error) throw error;
 
-        console.log("[AUTH] ✓ OAuth iniciado correctamente");
         return { success: true };
       } catch (error) {
-        console.error("[AUTH] ❌ Error en signInWithGoogle:", error);
+        console.error("[AUTH] Error en signInWithGoogle:", error);
         this.error = error.message;
         this.loading = false;
         return { success: false, error: error.message };
@@ -377,7 +286,6 @@ export const useAuthStore = defineStore("auth", {
     // ============================================
 
     async login(email, password) {
-      console.log("[AUTH] 🔐 Iniciando login para:", email);
       this.loading = true;
       this.error = null;
 
@@ -387,36 +295,28 @@ export const useAuthStore = defineStore("auth", {
           password,
         });
 
-        if (error) {
-          console.error("[AUTH] ❌ Error en signInWithPassword:", error);
-          throw error;
-        }
-
-        console.log("[AUTH] ✓ Login exitoso, usuario:", data.user.id);
+        if (error) throw error;
 
         this.user = data.user;
 
-        // Cargar perfil
-        console.log("[AUTH] 🔄 Cargando perfil después de login...");
-        this.profile = await getUserProfile(data.user.id);
-        console.log(
-          "[AUTH] ✓ Perfil cargado después de login:",
-          this.profile.rol,
+        // Cargar perfil con timeout
+        this.profile = await withTimeout(
+          getUserProfile(data.user.id),
+          PROFILE_TIMEOUT_MS,
+          "getUserProfile (login)",
         );
 
         this.initialized = true;
-
-        // Persistir estado
+        _initPromise = Promise.resolve();
         this.persistAuth();
 
         return { success: true };
       } catch (error) {
-        console.error("[AUTH] ❌ Error en login:", error);
+        console.error("[AUTH] Error en login:", error);
         this.error = error.message;
         return { success: false, error: error.message };
       } finally {
         this.loading = false;
-        console.log("[AUTH] Login completado, loading:", this.loading);
       }
     },
 
@@ -425,12 +325,10 @@ export const useAuthStore = defineStore("auth", {
     // ============================================
 
     async register(email, password, nombre, rol = "jugador") {
-      console.log("[AUTH] 📝 Iniciando registro con:", { email, nombre, rol });
       this.loading = true;
       this.error = null;
 
       try {
-        // Verificar que el rol sea válido
         const validRoles = ["admin", "capitan", "jugador"];
         if (!validRoles.includes(rol)) {
           throw new Error(
@@ -438,7 +336,6 @@ export const useAuthStore = defineStore("auth", {
           );
         }
 
-        // Registrar con metadatos para que el trigger cree el perfil automáticamente
         const { data, error } = await supabase.auth.signUp({
           email,
           password,
@@ -450,22 +347,10 @@ export const useAuthStore = defineStore("auth", {
           },
         });
 
-        console.log("[AUTH] Respuesta de signUp:", { data, error });
+        if (error) throw error;
 
-        if (error) {
-          console.error("[AUTH] Error en signUp:", error);
-          throw error;
-        }
-
-        // Verificar si el usuario fue creado
         if (!data.user) {
-          console.warn(
-            "[AUTH] Usuario no fue creado, verificando session:",
-            data,
-          );
-          // Puede ser que el usuario ya existe o el email confirmation está habilitado
           if (data.session === null) {
-            // El usuario fue creado pero requiere confirmación de email
             return {
               success: true,
               message:
@@ -473,20 +358,17 @@ export const useAuthStore = defineStore("auth", {
             };
           }
         } else {
-          console.log("[AUTH] ✓ Usuario creado con ID:", data.user.id);
           // Verificar que el perfil se creó
           try {
-            const { data: profile, error: profileError } = await supabase
-              .from("profiles")
-              .select("*")
-              .eq("id", data.user.id)
-              .single();
-
-            if (profileError) {
-              console.error("[AUTH] Error al verificar perfil:", profileError);
-            } else {
-              console.log("[AUTH] ✓ Perfil verificado:", profile);
-            }
+            await withTimeout(
+              supabase
+                .from("profiles")
+                .select("*")
+                .eq("id", data.user.id)
+                .single(),
+              PROFILE_TIMEOUT_MS,
+              "verificar perfil (registro)",
+            );
           } catch (e) {
             console.warn("[AUTH] No se pudo verificar el perfil:", e);
           }
@@ -494,15 +376,13 @@ export const useAuthStore = defineStore("auth", {
 
         return { success: true };
       } catch (error) {
-        console.error("[AUTH] Error completo en register:", error);
-        // Proporcionar mensaje más detallado
+        console.error("[AUTH] Error en register:", error);
         const errorMsg =
           error.message || error.error_description || "Error desconocido";
         this.error = errorMsg;
         return { success: false, error: errorMsg };
       } finally {
         this.loading = false;
-        console.log("[AUTH] Registro completado, loading:", this.loading);
       }
     },
 
@@ -511,24 +391,16 @@ export const useAuthStore = defineStore("auth", {
     // ============================================
 
     async logout() {
-      console.log("[AUTH] 🚪 Iniciando logout...");
       try {
         await supabase.auth.signOut();
-        console.log("[AUTH] ✓ SignOut completado en Supabase");
-
-        this.user = null;
-        this.profile = null;
-        this.initialized = false;
-        this.clearStorage();
-
-        console.log("[AUTH] ✓ Estado limpiado después de logout");
       } catch (error) {
-        console.error("[AUTH] ❌ Error al cerrar sesión:", error);
-        // En caso de error, limpiar igualmente el estado local
+        console.error("[AUTH] Error al cerrar sesión:", error);
+      } finally {
         this.user = null;
         this.profile = null;
         this.initialized = false;
         this.clearStorage();
+        _initPromise = null;
       }
     },
 
@@ -538,13 +410,8 @@ export const useAuthStore = defineStore("auth", {
 
     async updateProfile(updates) {
       if (!this.user) {
-        console.warn(
-          "[AUTH] Intentando actualizar perfil sin usuario autenticado",
-        );
         return { success: false, error: "No autenticado" };
       }
-
-      console.log("[AUTH] 🔄 Actualizando perfil:", updates);
 
       try {
         const { error } = await supabase
@@ -554,31 +421,21 @@ export const useAuthStore = defineStore("auth", {
 
         if (error) throw error;
 
-        // Actualizar el estado local
         this.profile = { ...this.profile, ...updates };
-
-        // Persistir cambio
         this.persistAuth();
 
-        console.log("[AUTH] ✓ Perfil actualizado correctamente");
         return { success: true };
       } catch (error) {
-        console.error("[AUTH] ❌ Error al actualizar perfil:", error);
+        console.error("[AUTH] Error al actualizar perfil:", error);
         return { success: false, error: error.message };
       }
     },
 
     // ============================================
-    // MÉTODO DE VERIFICACIÓN DE SESIÓN
+    // VERIFICACIÓN DE SESIÓN
     // ============================================
 
-    /**
-     * Verificar manualmente la validez de la sesión actual
-     * Útil para verificar antes de acciones importantes
-     */
     async verifySession() {
-      console.log("[AUTH] 🔍 Verificando validez de sesión...");
-
       try {
         const {
           data: { session },
@@ -586,15 +443,12 @@ export const useAuthStore = defineStore("auth", {
         } = await supabase.auth.getSession();
 
         if (error) {
-          console.error("[AUTH] ❌ Error al verificar sesión:", error);
+          console.error("[AUTH] Error al verificar sesión:", error);
           return false;
         }
 
         if (!session) {
-          console.log("[AUTH] ℹ️ Sesión no válida o expirada");
-          // Limpiar estado si la sesión ya no es válida
           if (this.user) {
-            console.log("[AUTH] ⚠️ Limpiando datos de usuario local");
             this.user = null;
             this.profile = null;
             this.initialized = false;
@@ -603,23 +457,15 @@ export const useAuthStore = defineStore("auth", {
           return false;
         }
 
-        console.log("[AUTH] ✓ Sesión válida para:", session.user.id);
         return true;
       } catch (error) {
-        console.error("[AUTH] ❌ Excepción al verificar sesión:", error);
+        console.error("[AUTH] Error al verificar sesión:", error);
         return false;
       }
     },
 
-    /**
-     * Sincronizar sesión con Supabase en segundo plano tras un timeout
-     * Verifica la sesión real una vez que la conexión se recupere
-     */
     async _syncSessionInBackground() {
-      console.log(
-        "[AUTH] 🔄 Iniciando sincronización de sesión en background...",
-      );
-      // Esperar 3s antes de reintentar para dar tiempo a que se recupere la conexión
+      // Esperar antes de reintentar para dar tiempo a recuperar conexión
       await new Promise((resolve) => setTimeout(resolve, 3000));
 
       try {
@@ -629,9 +475,6 @@ export const useAuthStore = defineStore("auth", {
         } = await supabase.auth.getSession();
 
         if (error || !session) {
-          console.warn(
-            "[AUTH] ⚠️ Sesión inválida en sync background, limpiando...",
-          );
           this.user = null;
           this.profile = null;
           this.initialized = false;
@@ -639,42 +482,36 @@ export const useAuthStore = defineStore("auth", {
           return;
         }
 
-        // Sesión válida — actualizar usuario y perfil
         this.user = session.user;
         if (!this.profile || this.profile.id !== session.user.id) {
           try {
-            this.profile = await getUserProfile(session.user.id);
+            this.profile = await withTimeout(
+              getUserProfile(session.user.id),
+              PROFILE_TIMEOUT_MS,
+              "getUserProfile (background)",
+            );
           } catch (e) {
             console.warn("[AUTH] Error al obtener perfil en background:", e);
           }
         }
         this.persistAuth();
-        console.log("[AUTH] ✓ Sesión sincronizada correctamente en background");
       } catch (e) {
-        console.warn(
-          "[AUTH] ⚠️ Error en sync background (sin conexión?):",
-          e.message,
-        );
+        console.warn("[AUTH] Error en sync background:", e.message);
       }
     },
 
-    /**
-     * Forzar recarga del perfil desde la base de datos
-     */
     async refreshProfile() {
-      if (!this.user) {
-        console.warn("[AUTH] No hay usuario para refrescar perfil");
-        return;
-      }
-
-      console.log("[AUTH] 🔄 Refrescando perfil desde base de datos...");
+      if (!this.user) return;
 
       try {
-        this.profile = await getUserProfile(this.user.id);
+        this.profile = await withTimeout(
+          getUserProfile(this.user.id),
+          PROFILE_TIMEOUT_MS,
+          "getUserProfile (refresh)",
+        );
         this.persistAuth();
-        console.log("[AUTH] ✓ Perfil refrescado:", this.profile.rol);
       } catch (error) {
-        console.error("[AUTH] ❌ Error al refrescar perfil:", error);
+        console.error("[AUTH] Error al refrescar perfil:", error);
       }
     },
   },
