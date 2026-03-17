@@ -12,6 +12,9 @@ const PROFILE_TIMEOUT_MS = 3000;
 // Promise compartida para inicialización — evita race conditions y polling
 let _initPromise = null;
 
+// Contador de generación para cancelar syncs en background cuando se hace logout
+let _syncGeneration = 0;
+
 /**
  * Ejecuta una promesa con timeout. Si la promesa no se resuelve en `ms` milisegundos,
  * se rechaza con un error descriptivo.
@@ -125,7 +128,6 @@ export const useAuthStore = defineStore("auth", {
           case "SIGNED_OUT":
             this.user = null;
             this.profile = null;
-            this.initialized = false;
             this.clearStorage();
             break;
 
@@ -153,8 +155,8 @@ export const useAuthStore = defineStore("auth", {
     // ============================================
 
     async initialize() {
-      // Ya inicializado con usuario — no hacer nada
-      if (this.initialized && this.user) return;
+      // Ya inicializado (con o sin usuario) — no volver a ejecutar
+      if (this.initialized) return;
 
       // Si ya hay una Promise de inicialización en curso, esperar la misma
       if (_initPromise) return _initPromise;
@@ -371,16 +373,19 @@ export const useAuthStore = defineStore("auth", {
     // ============================================
 
     async logout() {
+      // Limpiar estado ANTES de la llamada de red para respuesta inmediata en la UI.
+      // La reactividad de Vue actualizará el Navbar al instante.
+      _syncGeneration++; // Cancela cualquier _syncSessionInBackground en curso
+      this.user = null;
+      this.profile = null;
+      this.initialized = true; // Seguimos inicializados, pero sin usuario
+      this.clearStorage();
+      _initPromise = null;
+
       try {
         await supabase.auth.signOut();
       } catch (error) {
         console.error("[AUTH] Error al cerrar sesión:", error);
-      } finally {
-        this.user = null;
-        this.profile = null;
-        this.initialized = false;
-        this.clearStorage();
-        _initPromise = null;
       }
     },
 
@@ -431,7 +436,6 @@ export const useAuthStore = defineStore("auth", {
           if (this.user) {
             this.user = null;
             this.profile = null;
-            this.initialized = false;
             this.clearStorage();
           }
           return false;
@@ -445,15 +449,24 @@ export const useAuthStore = defineStore("auth", {
     },
 
     async _syncSessionInBackground(delay = 3000) {
+      // Capturar generación actual para detectar si se llama logout durante el sync
+      const generation = _syncGeneration;
+
       if (delay > 0) {
         await new Promise((resolve) => setTimeout(resolve, delay));
       }
+
+      // Si se hizo logout mientras esperábamos, abortar
+      if (_syncGeneration !== generation) return;
 
       try {
         const {
           data: { session },
           error,
         } = await supabase.auth.getSession();
+
+        // Verificar de nuevo tras la llamada de red (puede haberse hecho logout)
+        if (_syncGeneration !== generation) return;
 
         if (error || !session) {
           // Sesión inválida: limpiar estado (Vue reaccionará y el guard redirigirá)
@@ -475,6 +488,8 @@ export const useAuthStore = defineStore("auth", {
             console.warn("[AUTH] Error al obtener perfil en background:", e);
           }
         }
+
+        if (_syncGeneration !== generation) return;
         this.persistAuth();
       } catch (e) {
         console.warn("[AUTH] Error en sync background:", e.message);
