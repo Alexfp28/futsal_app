@@ -2,6 +2,10 @@
 import { ref, computed, onMounted } from "vue";
 import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/stores/auth";
+import {
+  CalendarDaysIcon,
+  ListBulletIcon,
+} from "@heroicons/vue/24/outline";
 
 const authStore = useAuthStore();
 const canManage = computed(() => authStore.isAdmin);
@@ -10,6 +14,7 @@ const loading = ref(true);
 const error = ref("");
 const rows = ref([]);
 const showLegend = ref(false);
+const viewMode = ref("tabla"); // 'tabla' | 'tarjetas'
 
 // ── Panel lateral de registro de resultado ──────────────────────────────────
 const showPanel = ref(false);
@@ -370,6 +375,38 @@ onMounted(fetchClasificacion);
               </span>
             </button>
 
+            <!-- Toggle de vista -->
+            <div class="flex items-center rounded-lg border border-notion-border overflow-hidden">
+              <button
+                type="button"
+                :class="[
+                  'flex items-center gap-1.5 px-3 py-1.5 text-xs transition-colors',
+                  viewMode === 'tabla'
+                    ? 'bg-primary text-white'
+                    : 'text-notion-muted hover:bg-notion-bg',
+                ]"
+                @click="viewMode = 'tabla'"
+                title="Vista tabla"
+              >
+                <CalendarDaysIcon class="w-3.5 h-3.5" />
+                <span class="hidden sm:inline">Tabla</span>
+              </button>
+              <button
+                type="button"
+                :class="[
+                  'flex items-center gap-1.5 px-3 py-1.5 text-xs transition-colors',
+                  viewMode === 'tarjetas'
+                    ? 'bg-primary text-white'
+                    : 'text-notion-muted hover:bg-notion-bg',
+                ]"
+                @click="viewMode = 'tarjetas'"
+                title="Vista tarjetas"
+              >
+                <ListBulletIcon class="w-3.5 h-3.5" />
+                <span class="hidden sm:inline">Tarjetas</span>
+              </button>
+            </div>
+
             <!-- Botón registrar resultado (solo admin/capitán) -->
             <button
               v-if="canManage"
@@ -446,8 +483,8 @@ onMounted(fetchClasificacion);
           </div>
         </div>
 
-        <!-- Vista móvil: tarjetas -->
-        <div v-if="rows.length > 0" class="md:hidden space-y-3">
+        <!-- Vista tarjetas -->
+        <div v-show="viewMode === 'tarjetas'" v-if="rows.length > 0" class="space-y-3">
           <div
             v-for="(row, index) in rows"
             :key="row.id"
@@ -532,8 +569,8 @@ onMounted(fetchClasificacion);
           </div>
         </div>
 
-        <!-- Vista escritorio / tablet: tabla completa -->
-        <div v-if="rows.length > 0" class="hidden md:block overflow-x-auto">
+        <!-- Vista tabla -->
+        <div v-show="viewMode === 'tabla'" v-if="rows.length > 0" class="overflow-x-auto">
           <table class="min-w-full table-auto text-sm">
             <thead>
               <tr class="bg-notion-bg text-notion-muted">
