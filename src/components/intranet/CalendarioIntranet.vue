@@ -9,6 +9,8 @@ import {
   ClockIcon,
   XMarkIcon,
   ArrowTopRightOnSquareIcon,
+  CalendarDaysIcon,
+  ListBulletIcon,
 } from "@heroicons/vue/24/outline";
 import { useAuthStore } from "@/stores/auth";
 
@@ -23,6 +25,7 @@ const currentPage = ref(1);
 const partidosPerPage = 6;
 const selectedPartido = ref(null);
 const isModalOpen = ref(false);
+const viewMode = ref("calendario"); // 'calendario' | 'lista'
 
 const fetchPartidos = async () => {
   loading.value = true;
@@ -322,12 +325,52 @@ const getGoogleMapsUrl = (lugar) => {
               Limpiar
             </button>
           </div>
+
+          <!-- Toggle de vista -->
+          <div class="flex items-center rounded-lg border border-notion-border overflow-hidden">
+            <button
+              type="button"
+              :class="[
+                'flex items-center gap-1.5 px-3 py-1.5 text-xs transition-colors',
+                viewMode === 'calendario'
+                  ? 'bg-primary text-white'
+                  : 'text-notion-muted hover:bg-notion-bg',
+              ]"
+              @click="viewMode = 'calendario'"
+              title="Vista calendario"
+            >
+              <CalendarDaysIcon class="w-3.5 h-3.5" />
+              <span class="hidden sm:inline">Calendario</span>
+            </button>
+            <button
+              type="button"
+              :class="[
+                'flex items-center gap-1.5 px-3 py-1.5 text-xs transition-colors',
+                viewMode === 'lista'
+                  ? 'bg-primary text-white'
+                  : 'text-notion-muted hover:bg-notion-bg',
+              ]"
+              @click="viewMode = 'lista'"
+              title="Vista lista"
+            >
+              <ListBulletIcon class="w-3.5 h-3.5" />
+              <span class="hidden sm:inline">Lista</span>
+            </button>
+          </div>
         </div>
       </div>
     </div>
 
-    <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
-      <div class="xl:col-span-2">
+    <div
+      :class="[
+        'grid grid-cols-1 gap-6',
+        viewMode === 'calendario' ? 'xl:grid-cols-3' : '',
+      ]"
+    >
+      <div
+        v-show="viewMode === 'calendario'"
+        :class="viewMode === 'calendario' ? 'xl:col-span-2' : ''"
+      >
         <div class="card p-5">
           <div class="flex items-center justify-between mb-4">
             <h3 class="text-lg font-semibold text-notion-text capitalize">
@@ -438,7 +481,7 @@ const getGoogleMapsUrl = (lugar) => {
         </div>
       </div>
 
-      <div class="xl:col-span-1">
+      <div :class="viewMode === 'calendario' ? 'xl:col-span-1' : ''">
         <div class="card p-5">
           <div class="flex items-start justify-between gap-3 mb-3">
             <div>
