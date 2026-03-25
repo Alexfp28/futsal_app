@@ -79,7 +79,13 @@ watch(
   () => form.value.equipo_local_id,
   async (newId) => {
     jugadoresLocal.value = await fetchJugadoresByEquipo(newId);
-    statsLocal.value = [];
+    statsLocal.value = jugadoresLocal.value.map((j) => ({
+      jugador_id: j.id,
+      goles: 0,
+      asistencias: 0,
+      tarjetas_amarillas: 0,
+      tarjetas_rojas: 0,
+    }));
   }
 );
 
@@ -87,7 +93,13 @@ watch(
   () => form.value.equipo_visitante_id,
   async (newId) => {
     jugadoresVisitante.value = await fetchJugadoresByEquipo(newId);
-    statsVisitante.value = [];
+    statsVisitante.value = jugadoresVisitante.value.map((j) => ({
+      jugador_id: j.id,
+      goles: 0,
+      asistencias: 0,
+      tarjetas_amarillas: 0,
+      tarjetas_rojas: 0,
+    }));
   }
 );
 
@@ -98,7 +110,8 @@ watch(
     if (newVal) {
       await initializePanel();
     }
-  }
+  },
+  { immediate: true }
 );
 
 // Methods
@@ -131,7 +144,7 @@ const initializePanel = async () => {
 const fetchEquipos = async () => {
   const { data } = await supabase
     .from("equipos")
-    .select("id, nombre, color_principal, escudo_url, logo_url")
+    .select("id, nombre, color_principal, escudo_url")
     .order("nombre");
   equipos.value = data || [];
 };
