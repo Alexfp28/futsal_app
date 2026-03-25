@@ -26,6 +26,7 @@ const stats = ref({ equipos: 0, jugadores: 0, partidos: 0 });
 const proximosPartidos = ref([]);
 const clasificacion = ref([]);
 const jugadoresLibres = ref([]);
+const imageErrors = ref({});
 
 // Animaciones
 const { observe, isVisible } = useScrollReveal({ threshold: 0.12 });
@@ -46,6 +47,7 @@ const countPartidos = useCountUp(
 // Cargar datos al montar
 const loadIdentidad = async () => {
   loading.value = true;
+  imageErrors.value = {};
   try {
     // Cargar estadísticas
     const [equiposRes, jugadoresRes, partidosRes] = await Promise.all([
@@ -64,7 +66,7 @@ const loadIdentidad = async () => {
     const { data: partidosData } = await supabase
       .from("partidos")
       .select(
-        "*, equipo_local:equipos!partidos_equipo_local_id_fkey(id, nombre, escudo_url), equipo_visitante:equipos!partidos_equipo_visitante_id_fkey(id, nombre, escudo_url)"
+        "*, equipo_local:equipos!partidos_equipo_local_id_fkey(id, nombre, escudo_url, color_principal), equipo_visitante:equipos!partidos_equipo_visitante_id_fkey(id, nombre, escudo_url, color_principal)"
       )
       .eq("estado", "programado")
       .gte("fecha", new Date().toISOString())
@@ -125,6 +127,20 @@ const formatFecha = (fecha) => {
 const getEstrellas = (nivel) => {
   if (!nivel) return [];
   return Array.from({ length: 5 }, (_, i) => i < nivel);
+};
+
+const getEquipoLogo = (equipo) => equipo?.logo_url || equipo?.escudo_url || null;
+
+const hasEquipoLogo = (equipo) =>
+  Boolean(getEquipoLogo(equipo)) && !imageErrors.value[equipo?.id];
+
+const handleImageError = (equipoId) => {
+  if (!equipoId) return;
+
+  imageErrors.value = {
+    ...imageErrors.value,
+    [equipoId]: true,
+  };
 };
 
 // Activar contadores cuando la sección es visible
@@ -565,8 +581,20 @@ watch(() => isVisible('stats'), (visible) => {
               <div class="flex items-center gap-3">
                 <!-- Equipo local -->
                 <div class="flex-1 flex flex-col items-center gap-2">
+                  <img
+                    v-if="hasEquipoLogo(partido.equipo_local)"
+                    :src="getEquipoLogo(partido.equipo_local)"
+                    :alt="`Escudo de ${partido.equipo_local?.nombre || 'Equipo local'}`"
+                    class="w-12 h-12 rounded-full object-cover bg-white border-2 border-primary/20 group-hover:border-primary/50 transition-colors duration-300"
+                    @error="handleImageError(partido.equipo_local?.id)"
+                  />
                   <div
-                    class="w-12 h-12 rounded-full bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center text-lg font-bold text-primary border-2 border-primary/20 group-hover:border-primary/50 transition-colors duration-300"
+                    v-else
+                    class="w-12 h-12 rounded-full flex items-center justify-center text-lg font-bold text-white border-2 border-primary/20 group-hover:border-primary/50 transition-colors duration-300"
+                    :style="{
+                      backgroundColor:
+                        partido.equipo_local?.color_principal || '#164bf0',
+                    }"
                   >
                     {{ partido.equipo_local?.nombre?.charAt(0) || "L" }}
                   </div>
@@ -584,8 +612,20 @@ watch(() => isVisible('stats'), (visible) => {
 
                 <!-- Equipo visitante -->
                 <div class="flex-1 flex flex-col items-center gap-2">
+                  <img
+                    v-if="hasEquipoLogo(partido.equipo_visitante)"
+                    :src="getEquipoLogo(partido.equipo_visitante)"
+                    :alt="`Escudo de ${partido.equipo_visitante?.nombre || 'Equipo visitante'}`"
+                    class="w-12 h-12 rounded-full object-cover bg-white border-2 border-secondary/30 group-hover:border-secondary/60 transition-colors duration-300"
+                    @error="handleImageError(partido.equipo_visitante?.id)"
+                  />
                   <div
-                    class="w-12 h-12 rounded-full bg-gradient-to-br from-secondary/30 to-secondary/10 flex items-center justify-center text-lg font-bold text-notion-text border-2 border-secondary/30 group-hover:border-secondary/60 transition-colors duration-300"
+                    v-else
+                    class="w-12 h-12 rounded-full flex items-center justify-center text-lg font-bold text-notion-text border-2 border-secondary/30 group-hover:border-secondary/60 transition-colors duration-300"
+                    :style="{
+                      backgroundColor:
+                        partido.equipo_visitante?.color_principal || '#f6ec15',
+                    }"
                   >
                     {{ partido.equipo_visitante?.nombre?.charAt(0) || "V" }}
                   </div>
@@ -707,8 +747,28 @@ watch(() => isVisible('stats'), (visible) => {
                     {{ equipo.posicion }}
                   </span>
                 </td>
-                <td class="py-4 px-4 font-semibold text-notion-text">
-                  {{ equipo.nombre }}
+                <td class="py-4 px-4">
+                  <div class="flex items-center gap-3">
+                    <img
+                      v-if="hasEquipoLogo(equipo)"
+                      :src="getEquipoLogo(equipo)"
+                      :alt="`Escudo de ${equipo.nombre}`"
+                      class="w-9 h-9 rounded-full object-cover border border-notion-border bg-white shrink-0"
+                      @error="handleImageError(equipo.id)"
+                    />
+                    <div
+                      v-else
+                      class="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold text-white shrink-0"
+                      :style="{
+                        backgroundColor: equipo.color_principal || '#164bf0',
+                      }"
+                    >
+                      {{ equipo.nombre?.charAt(0) || "E" }}
+                    </div>
+                    <span class="font-semibold text-notion-text">
+                      {{ equipo.nombre }}
+                    </span>
+                  </div>
                 </td>
                 <td class="py-4 px-4 text-center text-notion-muted">
                   {{ equipo.partidos_jugados || 0 }}
