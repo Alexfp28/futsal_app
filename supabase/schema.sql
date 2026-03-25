@@ -398,23 +398,72 @@ WHERE p.libre = true AND p.rol = 'jugador';
 
 -- Vista de clasificación (si se quiere implementar liga)
 CREATE OR REPLACE VIEW clasificacion AS
-SELECT 
-  e.id,
-  e.nombre,
-  e.color_principal,
-  COUNT(p.id) as partidos_jugados,
-  SUM(CASE 
-    WHEN (p.goles_local > p.goles_visitante AND p.equipo_local_id = e.id)
-      OR (p.goles_visitante > p.goles_local AND p.equipo_visitante_id = e.id)
-    THEN 3 
-    WHEN p.goles_local = p.goles_visitante THEN 1 
-    ELSE 0 
-  END) as puntos
-FROM equipos e
-LEFT JOIN partidos p ON (p.equipo_local_id = e.id OR p.equipo_visitante_id = e.id)
-  AND p.estado = 'jugado'
-GROUP BY e.id, e.nombre, e.color_principal
-ORDER BY puntos DESC;
+WITH resumen AS (
+  SELECT
+    e.id,
+    e.nombre,
+    e.escudo_url,
+    e.color_principal,
+    COUNT(p.id) AS partidos_jugados,
+    COALESCE(SUM(CASE
+      WHEN (p.equipo_local_id = e.id AND p.goles_local > p.goles_visitante)
+        OR (p.equipo_visitante_id = e.id AND p.goles_visitante > p.goles_local)
+      THEN 1
+      ELSE 0
+    END), 0) AS ganados,
+    COALESCE(SUM(CASE
+      WHEN p.goles_local = p.goles_visitante THEN 1
+      ELSE 0
+    END), 0) AS empatados,
+    COALESCE(SUM(CASE
+      WHEN (p.equipo_local_id = e.id AND p.goles_local < p.goles_visitante)
+        OR (p.equipo_visitante_id = e.id AND p.goles_visitante < p.goles_local)
+      THEN 1
+      ELSE 0
+    END), 0) AS perdidos,
+    COALESCE(SUM(CASE
+      WHEN p.equipo_local_id = e.id THEN p.goles_local
+      WHEN p.equipo_visitante_id = e.id THEN p.goles_visitante
+      ELSE 0
+    END), 0) AS gf,
+    COALESCE(SUM(CASE
+      WHEN p.equipo_local_id = e.id THEN p.goles_visitante
+      WHEN p.equipo_visitante_id = e.id THEN p.goles_local
+      ELSE 0
+    END), 0) AS gc,
+    COALESCE(SUM(CASE
+      WHEN (p.equipo_local_id = e.id AND p.goles_local > p.goles_visitante)
+        OR (p.equipo_visitante_id = e.id AND p.goles_visitante > p.goles_local)
+      THEN 3
+      WHEN p.goles_local = p.goles_visitante THEN 1
+      ELSE 0
+    END), 0) AS pts
+  FROM equipos e
+  LEFT JOIN partidos p
+    ON (p.equipo_local_id = e.id OR p.equipo_visitante_id = e.id)
+    AND p.estado = 'jugado'
+    AND p.goles_local IS NOT NULL
+    AND p.goles_visitante IS NOT NULL
+  GROUP BY e.id, e.nombre, e.escudo_url, e.color_principal
+)
+SELECT
+  ROW_NUMBER() OVER (
+    ORDER BY pts DESC, (gf - gc) DESC, gf DESC, nombre ASC
+  ) AS posicion,
+  id,
+  nombre,
+  escudo_url,
+  color_principal,
+  partidos_jugados,
+  ganados,
+  empatados,
+  perdidos,
+  gf,
+  gc,
+  (gf - gc) AS dg,
+  pts
+FROM resumen
+ORDER BY pts DESC, dg DESC, gf DESC, nombre ASC;
 
 -- Vista de convocatorias con información de partido y jugador
 CREATE OR REPLACE VIEW convocatorias_detalladas AS

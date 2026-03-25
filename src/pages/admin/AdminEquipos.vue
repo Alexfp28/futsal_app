@@ -163,6 +163,20 @@ const uploadEscudo = async (equipoId) => {
   return urlData.publicUrl;
 };
 
+const syncCapitanProfile = async (capitanId, equipoId) => {
+  if (!capitanId || !equipoId) return;
+
+  const { error } = await supabase
+    .from("profiles")
+    .update({
+      equipo_id: equipoId,
+      libre: false,
+    })
+    .eq("id", capitanId);
+
+  if (error) throw error;
+};
+
 // ==================== GUARDAR ====================
 
 const saveEquipo = async () => {
@@ -191,6 +205,7 @@ const saveEquipo = async () => {
         .eq("id", editingEquipo.value.id);
 
       if (error) throw error;
+      await syncCapitanProfile(baseData.capitan_id, editingEquipo.value.id);
     } else {
       // --- INSERCIÓN: primero insertar, luego subir imagen con el ID generado ---
       const { data: inserted, error: insertError } = await supabase
@@ -212,6 +227,8 @@ const saveEquipo = async () => {
           if (updateError) throw updateError;
         }
       }
+
+      await syncCapitanProfile(baseData.capitan_id, inserted.id);
     }
 
     await loadEquipos();

@@ -1,20 +1,28 @@
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount } from "vue";
+import { ref, computed, onMounted, onBeforeUnmount, watch } from "vue";
 import { useRouter } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
 import {
   Bars3Icon,
   XMarkIcon,
   UserCircleIcon,
+  UserIcon,
+  ShieldCheckIcon,
+  UsersIcon,
+  ArrowsRightLeftIcon,
+  ArrowRightStartOnRectangleIcon,
 } from "@heroicons/vue/24/outline";
 
 const router = useRouter();
 const authStore = useAuthStore();
 defineOptions({ name: "Navbar" });
 
+const MENU_VIEW_STORAGE_KEY = "navbar_menu_view";
+
 const isMenuOpen = ref(false);
 const isUserMenuOpen = ref(false);
 const userMenuRef = ref(null);
+const menuView = ref("horizontal");
 
 const navigation = [
   { name: "Panel interno", href: "/intranet", requiresAuth: true },
@@ -45,23 +53,58 @@ const userMenuItems = computed(() => {
   const items = [];
 
   if (authStore.isAuthenticated) {
-    items.push({ name: "Mi Perfil", href: "/perfil" });
+    items.push({ name: "Mi Perfil", href: "/perfil", icon: UserIcon });
 
     if (authStore.isAdmin) {
-      items.push({ name: "Panel Admin", href: "/admin" });
+      items.push({
+        name: "Panel Admin",
+        href: "/admin",
+        icon: ShieldCheckIcon,
+      });
     }
 
-    if (authStore.isCapitan || authStore.isAdmin) {
+    if (authStore.isCapitan) {
       items.push({ name: "Panel Capitán", href: "/capitan" });
+      items.push({
+        name: "Mi Equipo",
+        href: "/capitan/equipo",
+        icon: UsersIcon,
+      });
     }
 
-    if (authStore.isCapitan || authStore.isAdmin) {
-      items.push({ name: "Mi Equipo", href: "/capitan/equipo" });
-    }
+    items.push({
+      name: "Alternar vista",
+      action: "toggle-view",
+      icon: ArrowsRightLeftIcon,
+    });
   }
 
   return items;
 });
+
+const userNavigationItems = computed(() =>
+  userMenuItems.value.filter((item) => !item.action),
+);
+
+const userActionItems = computed(() =>
+  userMenuItems.value.filter((item) => item.action),
+);
+
+const getUserMenuIcon = (item) => {
+  if (item.icon) return item.icon;
+  if (item.action === "toggle-view") return ArrowsRightLeftIcon;
+  if (item.href === "/perfil") return UserIcon;
+  if (item.href === "/admin") return ShieldCheckIcon;
+  if (item.href === "/capitan" || item.href === "/capitan/equipo") {
+    return UsersIcon;
+  }
+
+  return UserCircleIcon;
+};
+
+const isVerticalMenuView = computed(
+  () => authStore.isAuthenticated && menuView.value === "vertical",
+);
 
 const toggleMenu = () => {
   isMenuOpen.value = !isMenuOpen.value;
@@ -83,6 +126,7 @@ const handleClickOutside = (event) => {
 
 const handleLogout = async () => {
   await authStore.logout();
+  isMenuOpen.value = false;
   isUserMenuOpen.value = false;
   router.push("/");
 };
@@ -91,13 +135,51 @@ const closeMenu = () => {
   isMenuOpen.value = false;
 };
 
+const loadMenuViewPreference = () => {
+  if (typeof window === "undefined") return;
+
+  const storedView = localStorage.getItem(MENU_VIEW_STORAGE_KEY);
+  menuView.value = storedView === "vertical" ? "vertical" : "horizontal";
+};
+
+const toggleMenuView = () => {
+  menuView.value = menuView.value === "vertical" ? "horizontal" : "vertical";
+  isMenuOpen.value = false;
+  isUserMenuOpen.value = false;
+};
+
+const handleUserMenuItemClick = (item) => {
+  if (item.action === "toggle-view") {
+    toggleMenuView();
+    return;
+  }
+
+  isUserMenuOpen.value = false;
+};
+
 onMounted(() => {
+  loadMenuViewPreference();
   document.addEventListener("click", handleClickOutside);
 });
 
 onBeforeUnmount(() => {
   document.removeEventListener("click", handleClickOutside);
 });
+
+watch(menuView, (value) => {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(MENU_VIEW_STORAGE_KEY, value);
+});
+
+watch(
+  () => authStore.isAuthenticated,
+  (isAuthenticated) => {
+    if (!isAuthenticated) {
+      isMenuOpen.value = false;
+      isUserMenuOpen.value = false;
+    }
+  },
+);
 </script>
 
 <template>
@@ -127,6 +209,7 @@ onBeforeUnmount(() => {
 
         <!-- Desktop Navigation -->
         <div
+          v-if="!isVerticalMenuView"
           class="hidden lg:flex items-center overflow-x-auto flex-1 px-2 py-2 scrollbar-hide"
         >
           <router-link
@@ -143,6 +226,17 @@ onBeforeUnmount(() => {
           >
             {{ item.name }}
           </router-link>
+        </div>
+
+        <div v-else class="hidden lg:flex items-center flex-1 px-2 py-2">
+          <button
+            @click="toggleMenu"
+            class="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white/80 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
+          >
+            <Bars3Icon v-if="!isMenuOpen" class="w-6 h-6" />
+            <XMarkIcon v-else class="w-6 h-6" />
+            <span>Menu</span>
+          </button>
         </div>
 
         <!-- User Menu / Auth Buttons -->
@@ -164,20 +258,38 @@ onBeforeUnmount(() => {
                 v-if="isUserMenuOpen"
                 class="absolute right-0 mt-2 w-56 bg-[#0d1e66] rounded-lg shadow-xl border border-white/10 py-1 transition-all duration-200 ease-out"
               >
-                <router-link
-                  v-for="item in userMenuItems"
-                  :key="item.name"
-                  :to="item.href"
-                  class="block px-4 py-2.5 text-sm text-white/80 hover:text-white hover:bg-white/10 whitespace-nowrap transition-colors duration-150"
-                  @click="isUserMenuOpen = false"
-                >
-                  {{ item.name }}
-                </router-link>
+                <template v-for="item in userMenuItems" :key="item.name">
+                  <button
+                    v-if="item.action"
+                    type="button"
+                    class="flex w-full items-center gap-3 px-4 py-2.5 text-sm text-white/80 hover:text-white hover:bg-white/10 whitespace-nowrap transition-colors duration-150"
+                    @click="handleUserMenuItemClick(item)"
+                  >
+                    <component
+                      :is="getUserMenuIcon(item)"
+                      class="w-4 h-4 text-secondary flex-shrink-0"
+                    />
+                    {{ item.name }}
+                  </button>
+                  <router-link
+                    v-else
+                    :to="item.href"
+                    class="flex items-center gap-3 px-4 py-2.5 text-sm text-white/80 hover:text-white hover:bg-white/10 whitespace-nowrap transition-colors duration-150"
+                    @click="handleUserMenuItemClick(item)"
+                  >
+                    <component
+                      :is="getUserMenuIcon(item)"
+                      class="w-4 h-4 text-secondary flex-shrink-0"
+                    />
+                    {{ item.name }}
+                  </router-link>
+                </template>
                 <hr class="my-1 border-white/10" />
                 <button
                   @click="handleLogout"
-                  class="block w-full text-left px-4 py-2.5 text-sm text-red-400 hover:text-red-300 hover:bg-red-500/20 transition-colors duration-150"
+                  class="flex w-full items-center gap-3 px-4 py-2.5 text-sm text-red-400 hover:text-red-300 hover:bg-red-500/20 transition-colors duration-150"
                 >
+                  <ArrowRightStartOnRectangleIcon class="w-4 h-4 flex-shrink-0" />
                   Cerrar Sesión
                 </button>
               </div>
@@ -212,11 +324,12 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
-    <!-- Mobile Navigation -->
+    <!-- Mobile and optional desktop vertical navigation -->
     <transition name="slide-down">
       <div
         v-if="isMenuOpen"
-        class="lg:hidden bg-[#0a1a5c] border-t border-white/10"
+        class="bg-[#0a1a5c] border-t border-white/10"
+        :class="{ 'lg:hidden': !isVerticalMenuView }"
       >
         <div class="px-4 py-3 space-y-1 max-h-96 overflow-y-auto">
           <router-link
@@ -243,24 +356,41 @@ onBeforeUnmount(() => {
               <span class="text-sm font-semibold text-white">{{
                 authStore.userName
               }}</span>
-              <span
-                class="badge bg-secondary text-[#0a1a5c] text-xs font-bold"
-                >{{ authStore.userRole }}</span
-              >
+              <span class="badge bg-secondary text-[#0a1a5c] text-xs font-bold">
+                {{ authStore.userRole }}
+              </span>
             </div>
             <router-link
-              v-for="item in userMenuItems"
+              v-for="item in userNavigationItems"
               :key="item.name"
+              class="flex items-center gap-3 px-4 py-2.5 text-sm text-white/80 hover:text-white hover:bg-white/10 rounded-lg transition-colors whitespace-nowrap"
               :to="item.href"
-              class="block px-4 py-2.5 text-sm text-white/80 hover:text-white hover:bg-white/10 rounded-lg transition-colors whitespace-nowrap"
               @click="closeMenu"
             >
+              <component
+                :is="getUserMenuIcon(item)"
+                class="w-4 h-4 text-secondary flex-shrink-0"
+              />
               {{ item.name }}
             </router-link>
             <button
-              @click="handleLogout"
-              class="block w-full text-left px-4 py-2.5 text-sm text-red-400 hover:text-red-300 hover:bg-red-500/20 rounded-lg mt-2 transition-colors duration-150"
+              v-for="item in userActionItems"
+              :key="item.name"
+              type="button"
+              class="flex w-full items-center gap-3 text-left px-4 py-2.5 text-sm text-white/80 hover:text-white hover:bg-white/10 rounded-lg transition-colors whitespace-nowrap"
+              @click="handleUserMenuItemClick(item)"
             >
+              <component
+                :is="getUserMenuIcon(item)"
+                class="w-4 h-4 text-secondary flex-shrink-0"
+              />
+              {{ item.name }}
+            </button>
+            <button
+              @click="handleLogout"
+              class="flex w-full items-center gap-3 text-left px-4 py-2.5 text-sm text-red-400 hover:text-red-300 hover:bg-red-500/20 rounded-lg mt-2 transition-colors duration-150"
+            >
+              <ArrowRightStartOnRectangleIcon class="w-4 h-4 flex-shrink-0" />
               Cerrar Sesión
             </button>
           </template>
