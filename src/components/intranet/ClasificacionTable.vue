@@ -23,9 +23,27 @@ const form = ref({
   equipo_visitante_id: "",
   goles_local: 0,
   goles_visitante: 0,
-  fecha: new Date().toISOString().slice(0, 16),
+  fecha: new Date().toISOString().slice(0, 10),
+  hora_inicio: "",
+  hora_fin: "",
   lugar: "Polideportivo Municipal",
+  arbitro: "",
+  observaciones: "",
+  redactado_por: "",
+  confirmado: false,
 });
+
+// Scheduled matches
+const scheduledMatches = ref([]);
+const selectedScheduledMatch = ref(null);
+
+// Player rosters
+const jugadoresLocal = ref([]);
+const jugadoresVisitante = ref([]);
+
+// Match statistics (per player per team)
+const statsLocal = ref([]);
+const statsVisitante = ref([]);
 
 const currentMapQuery = ref("Polideportivo Municipal");
 
@@ -33,12 +51,63 @@ const equiposVisitante = computed(() =>
   equipos.value.filter((e) => e.id !== form.value.equipo_local_id),
 );
 
+const watch = (import('vue')).then(m => m.watch);
+
+// Watchers para cargar jugadores cuando cambian los equipos
+(async () => {
+  const { watch } = await import('vue');
+
+  // Watch selected scheduled match to auto-fill form
+  watch(() => selectedScheduledMatch.value, (selectedId) => {
+    if (selectedId) {
+      const match = scheduledMatches.value.find((m) => m.id === selectedId);
+      if (match) {
+        form.value.equipo_local_id = match.equipo_local_id;
+        form.value.equipo_visitante_id = match.equipo_visitante_id;
+        form.value.fecha = new Date(match.fecha).toISOString().slice(0, 10);
+        form.value.lugar = match.lugar;
+      }
+    }
+  });
+
+  watch(() => form.value.equipo_local_id, async (newId) => {
+    jugadoresLocal.value = await fetchJugadoresByEquipo(newId);
+    statsLocal.value = [];
+  });
+  watch(() => form.value.equipo_visitante_id, async (newId) => {
+    jugadoresVisitante.value = await fetchJugadoresByEquipo(newId);
+    statsVisitante.value = [];
+  });
+})();
+
 const fetchEquipos = async () => {
   const { data } = await supabase
     .from("equipos")
     .select("id, nombre, color_principal")
     .order("nombre");
   equipos.value = data || [];
+};
+
+const fetchJugadoresByEquipo = async (equipoId) => {
+  if (!equipoId) return [];
+  const { data } = await supabase
+    .from("profiles")
+    .select("id, nombre, numero_camiseta, posicion")
+    .eq("equipo_id", equipoId)
+    .eq("rol", "jugador")
+    .order("nombre");
+  return data || [];
+};
+
+const fetchScheduledMatches = async () => {
+  const { data } = await supabase
+    .from("partidos")
+    .select(
+      "id, fecha, lugar, equipo_local_id, equipo_visitante_id, equipo_local:equipos!partidos_equipo_local_id_fkey(nombre), equipo_visitante:equipos!partidos_equipo_visitante_id_fkey(nombre)",
+    )
+    .eq("estado", "programado")
+    .order("fecha");
+  scheduledMatches.value = data || [];
 };
 
 const selectedMapUrl = computed(() => {
@@ -60,12 +129,22 @@ const openPanel = async () => {
     equipo_visitante_id: "",
     goles_local: 0,
     goles_visitante: 0,
-    fecha: new Date().toISOString().slice(0, 16),
+    fecha: new Date().toISOString().slice(0, 10),
+    hora_inicio: "",
+    hora_fin: "",
     lugar: "Polideportivo Municipal",
+    arbitro: "",
+    observaciones: "",
+    redactado_por: "",
+    confirmado: false,
   };
+  selectedScheduledMatch.value = null;
+  statsLocal.value = [];
+  statsVisitante.value = [];
   currentMapQuery.value = "Polideportivo Municipal";
 
   if (equipos.value.length === 0) await fetchEquipos();
+  await fetchScheduledMatches();
   showPanel.value = true;
 };
 
@@ -89,10 +168,14 @@ const handleSave = async () => {
     saveError.value = "Indica la fecha del partido.";
     return;
   }
+  if (!form.value.confirmado) {
+    saveError.value = "Debes confirmar que la información es correcta.";
+    return;
+  }
 
   saving.value = true;
   try {
-    const { error: insertError } = await supabase.from("partidos").insert({
+    const partidoData = {
       equipo_local_id: form.value.equipo_local_id,
       equipo_visitante_id: form.value.equipo_visitante_id,
       goles_local: Number(form.value.goles_local),
@@ -100,9 +183,56 @@ const handleSave = async () => {
       fecha: new Date(form.value.fecha).toISOString(),
       lugar: form.value.lugar || "Polideportivo Municipal",
       estado: "jugado",
-    });
+      hora_inicio: form.value.hora_inicio || null,
+      hora_fin: form.value.hora_fin || null,
+      arbitro: form.value.arbitro || null,
+      observaciones: form.value.observaciones || null,
+      redactado_por: form.value.redactado_por || null,
+      confirmado: form.value.confirmado,
+    };
 
-    if (insertError) throw insertError;
+    let partidoId;
+    if (selectedScheduledMatch.value) {
+      // Update existing scheduled match
+      const { error: updateError } = await supabase
+        .from("partidos")
+        .update(partidoData)
+        .eq("id", selectedScheduledMatch.value);
+      if (updateError) throw updateError;
+      partidoId = selectedScheduledMatch.value;
+    } else {
+      // Insert new match
+      const { data, error: insertError } = await supabase
+        .from("partidos")
+        .insert(partidoData)
+        .select("id")
+        .single();
+      if (insertError) throw insertError;
+      partidoId = data.id;
+    }
+
+    // Insert player statistics
+    const allStats = [...statsLocal.value, ...statsVisitante.value]
+      .filter(
+        (s) =>
+          s.jugador_id &&
+          (s.goles || s.asistencias || s.tarjetas_amarillas || s.tarjetas_rojas),
+      )
+      .map((s) => ({
+        partido_id: partidoId,
+        jugador_id: s.jugador_id,
+        goles: s.goles || 0,
+        asistencias: s.asistencias || 0,
+        tarjetas_amarillas: s.tarjetas_amarillas || 0,
+        tarjetas_rojas: s.tarjetas_rojas || 0,
+      }));
+
+    if (allStats.length > 0) {
+      const { error: statsError } = await supabase
+        .from("estadisticas_partido_jugador")
+        .insert(allStats);
+      if (statsError) throw statsError;
+    }
 
     saveSuccess.value = true;
     await fetchClasificacion();
@@ -139,15 +269,10 @@ const fetchClasificacion = async () => {
       const perdidos = row.perdidos ?? null;
       const golesFavor = row.gf ?? null;
       const golesContra = row.gc ?? null;
-      const puntosExtra = row.dg ?? 0;
 
-      const diferenciaGoles =
-        row.diferencia_goles ??
-        (golesFavor !== null && golesContra !== null
-          ? golesFavor - golesContra
-          : null);
+      const diferenciaGoles = row.dg ?? null;
 
-      const totalPuntos = (row.pts ?? 0) + puntosExtra;
+      const totalPuntos = row.pts ?? 0;
 
       const porcentajeAprovechamiento =
         row.porcentaje_aprovechamiento ??
@@ -164,8 +289,6 @@ const fetchClasificacion = async () => {
         golesFavor,
         golesContra,
         diferenciaGoles,
-        puntosBase: row.pts ?? 0,
-        puntosExtra,
         totalPuntos,
         porcentajeAprovechamiento,
       };
@@ -264,7 +387,7 @@ onMounted(fetchClasificacion);
             </div>
             <div>
               <span class="font-semibold text-notion-text">Pts</span>
-              <span> · Puntos totales (base + extra).</span>
+              <span> · Puntos totales.</span>
             </div>
             <div>
               <span class="font-semibold text-notion-text">Juegos / PJ</span>
@@ -299,12 +422,6 @@ onMounted(fetchClasificacion);
               <span>
                 · Porcentaje de puntos obtenidos sobre el máximo posible.
               </span>
-            </div>
-            <div>
-              <span class="font-semibold text-notion-text">Pts extra</span>
-              <span>
-                · Bonificaciones o penalizaciones aplicadas al equipo.</span
-              >
             </div>
           </div>
         </div>
@@ -384,21 +501,6 @@ onMounted(fetchClasificacion);
               </div>
             </div>
 
-            <!-- Puntos extra -->
-            <div class="mt-3 flex justify-end">
-              <span
-                v-if="row.puntosExtra !== 0"
-                class="badge badge-warning text-[11px]"
-              >
-                Pts extra:
-                {{
-                  row.puntosExtra > 0 ? `+${row.puntosExtra}` : row.puntosExtra
-                }}
-              </span>
-              <span v-else class="text-[11px] text-notion-muted">
-                Sin puntos extra
-              </span>
-            </div>
           </div>
         </div>
 
@@ -418,7 +520,6 @@ onMounted(fetchClasificacion);
                 <th class="px-3 py-2 text-right">GC</th>
                 <th class="px-3 py-2 text-right">Dif</th>
                 <th class="px-3 py-2 text-right">% Aprov.</th>
-                <th class="px-3 py-2 text-right">Pts extra</th>
               </tr>
             </thead>
             <tbody>
@@ -475,19 +576,6 @@ onMounted(fetchClasificacion);
                   </span>
                   <span v-else>—</span>
                 </td>
-                <td class="px-3 py-2 text-right">
-                  <span
-                    v-if="row.puntosExtra !== 0"
-                    class="badge badge-warning justify-end"
-                  >
-                    {{
-                      row.puntosExtra > 0
-                        ? `+${row.puntosExtra}`
-                        : row.puntosExtra
-                    }}
-                  </span>
-                  <span v-else class="text-notion-muted">0</span>
-                </td>
               </tr>
             </tbody>
           </table>
@@ -518,7 +606,7 @@ onMounted(fetchClasificacion);
       <Transition name="slideover">
         <div
           v-if="showPanel"
-          class="fixed inset-y-0 right-0 z-50 flex w-full max-w-md flex-col bg-white shadow-2xl"
+          class="fixed inset-y-0 right-0 z-50 flex w-full max-w-lg flex-col bg-white shadow-2xl"
           @click.stop
         >
           <!-- Header del panel -->
@@ -527,10 +615,10 @@ onMounted(fetchClasificacion);
           >
             <div>
               <h2 class="text-base font-semibold text-notion-text">
-                Registrar resultado
+                Acta de partido - FutsalVall 2.0
               </h2>
               <p class="text-xs text-notion-muted mt-0.5">
-                El resultado actualizará la clasificación automáticamente.
+                Completa esta acta al finalizar cada partido. La información será validada por la Dirección Deportiva.
               </p>
             </div>
             <button
@@ -630,6 +718,27 @@ onMounted(fetchClasificacion);
               </div>
             </div>
 
+            <!-- Partido programado (opcional) -->
+            <div>
+              <label class="block text-xs font-medium text-notion-text mb-1.5">
+                Partido programado (opcional)
+              </label>
+              <select
+                v-model="selectedScheduledMatch"
+                class="input text-sm"
+              >
+                <option :value="null">Nuevo partido (sin programa)</option>
+                <option
+                  v-for="match in scheduledMatches"
+                  :key="match.id"
+                  :value="match.id"
+                >
+                  {{ match.equipo_local?.nombre }} vs {{ match.equipo_visitante?.nombre }} -
+                  {{ new Date(match.fecha).toLocaleDateString() }}
+                </option>
+              </select>
+            </div>
+
             <!-- Formulario -->
             <form @submit.prevent="handleSave" class="space-y-5">
               <!-- Equipo local -->
@@ -719,14 +828,42 @@ onMounted(fetchClasificacion);
                 <label
                   class="block text-xs font-medium text-notion-text mb-1.5"
                 >
-                  Fecha y hora del partido
+                  Fecha del partido
                 </label>
                 <input
                   v-model="form.fecha"
-                  type="datetime-local"
+                  type="date"
                   class="input text-sm"
                   required
                 />
+              </div>
+
+              <!-- Horarios -->
+              <div class="grid grid-cols-2 gap-4">
+                <div>
+                  <label
+                    class="block text-xs font-medium text-notion-text mb-1.5"
+                  >
+                    Hora inicio
+                  </label>
+                  <input
+                    v-model="form.hora_inicio"
+                    type="time"
+                    class="input text-sm"
+                  />
+                </div>
+                <div>
+                  <label
+                    class="block text-xs font-medium text-notion-text mb-1.5"
+                  >
+                    Hora fin
+                  </label>
+                  <input
+                    v-model="form.hora_fin"
+                    type="time"
+                    class="input text-sm"
+                  />
+                </div>
               </div>
 
               <!-- Lugar -->
@@ -770,6 +907,208 @@ onMounted(fetchClasificacion);
                 </div>
               </div>
 
+              <!-- Estadísticas Equipo Local -->
+              <div class="border-t border-notion-border pt-4">
+                <h4 class="text-xs font-semibold text-notion-text mb-3">
+                  Estadísticas - Equipo Local
+                </h4>
+                <div class="space-y-3">
+                  <div
+                    v-for="(stat, idx) in statsLocal"
+                    :key="idx"
+                    class="flex gap-2 items-end"
+                  >
+                    <select
+                      v-model="stat.jugador_id"
+                      class="input text-xs flex-1"
+                    >
+                      <option :value="null">Selecciona jugador…</option>
+                      <option
+                        v-for="jug in jugadoresLocal"
+                        :key="jug.id"
+                        :value="jug.id"
+                      >
+                        {{ jug.nombre }}
+                      </option>
+                    </select>
+                    <input
+                      v-model.number="stat.goles"
+                      type="number"
+                      min="0"
+                      placeholder="G"
+                      class="input text-xs w-12"
+                    />
+                    <input
+                      v-model.number="stat.asistencias"
+                      type="number"
+                      min="0"
+                      placeholder="A"
+                      class="input text-xs w-12"
+                    />
+                    <input
+                      v-model.number="stat.tarjetas_amarillas"
+                      type="number"
+                      min="0"
+                      placeholder="A"
+                      class="input text-xs w-12"
+                    />
+                    <input
+                      v-model.number="stat.tarjetas_rojas"
+                      type="number"
+                      min="0"
+                      placeholder="R"
+                      class="input text-xs w-12"
+                    />
+                    <button
+                      type="button"
+                      @click="statsLocal.splice(idx, 1)"
+                      class="text-red-500 hover:text-red-700 text-xs"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  @click="statsLocal.push({ jugador_id: null, goles: 0, asistencias: 0, tarjetas_amarillas: 0, tarjetas_rojas: 0 })"
+                  class="mt-2 text-xs text-primary hover:underline"
+                >
+                  + Agregar jugador
+                </button>
+              </div>
+
+              <!-- Estadísticas Equipo Visitante -->
+              <div class="border-t border-notion-border pt-4">
+                <h4 class="text-xs font-semibold text-notion-text mb-3">
+                  Estadísticas - Equipo Visitante
+                </h4>
+                <div class="space-y-3">
+                  <div
+                    v-for="(stat, idx) in statsVisitante"
+                    :key="idx"
+                    class="flex gap-2 items-end"
+                  >
+                    <select
+                      v-model="stat.jugador_id"
+                      class="input text-xs flex-1"
+                    >
+                      <option :value="null">Selecciona jugador…</option>
+                      <option
+                        v-for="jug in jugadoresVisitante"
+                        :key="jug.id"
+                        :value="jug.id"
+                      >
+                        {{ jug.nombre }}
+                      </option>
+                    </select>
+                    <input
+                      v-model.number="stat.goles"
+                      type="number"
+                      min="0"
+                      placeholder="G"
+                      class="input text-xs w-12"
+                    />
+                    <input
+                      v-model.number="stat.asistencias"
+                      type="number"
+                      min="0"
+                      placeholder="A"
+                      class="input text-xs w-12"
+                    />
+                    <input
+                      v-model.number="stat.tarjetas_amarillas"
+                      type="number"
+                      min="0"
+                      placeholder="A"
+                      class="input text-xs w-12"
+                    />
+                    <input
+                      v-model.number="stat.tarjetas_rojas"
+                      type="number"
+                      min="0"
+                      placeholder="R"
+                      class="input text-xs w-12"
+                    />
+                    <button
+                      type="button"
+                      @click="statsVisitante.splice(idx, 1)"
+                      class="text-red-500 hover:text-red-700 text-xs"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  @click="statsVisitante.push({ jugador_id: null, goles: 0, asistencias: 0, tarjetas_amarillas: 0, tarjetas_rojas: 0 })"
+                  class="mt-2 text-xs text-primary hover:underline"
+                >
+                  + Agregar jugador
+                </button>
+              </div>
+
+              <!-- Observaciones -->
+              <div class="border-t border-notion-border pt-4">
+                <label
+                  class="block text-xs font-medium text-notion-text mb-1.5"
+                >
+                  Incidencias / Observaciones
+                </label>
+                <textarea
+                  v-model="form.observaciones"
+                  placeholder="Retrasos, lesiones, conflictos, etc."
+                  class="input text-sm"
+                  rows="3"
+                ></textarea>
+              </div>
+
+              <!-- Árbitro -->
+              <div>
+                <label
+                  class="block text-xs font-medium text-notion-text mb-1.5"
+                >
+                  Árbitro <span class="text-notion-muted">(opcional)</span>
+                </label>
+                <input
+                  v-model="form.arbitro"
+                  type="text"
+                  placeholder="Nombre del árbitro"
+                  class="input text-sm"
+                />
+              </div>
+
+              <!-- Redactado por -->
+              <div>
+                <label
+                  class="block text-xs font-medium text-notion-text mb-1.5"
+                >
+                  Nombre de quien redacta el acta
+                </label>
+                <input
+                  v-model="form.redactado_por"
+                  type="text"
+                  placeholder="Tu nombre"
+                  class="input text-sm"
+                  required
+                />
+              </div>
+
+              <!-- Confirmación -->
+              <div class="flex items-start gap-2 border-t border-notion-border pt-4">
+                <input
+                  v-model="form.confirmado"
+                  type="checkbox"
+                  id="confirmar"
+                  class="mt-1"
+                />
+                <label
+                  for="confirmar"
+                  class="text-xs text-notion-text cursor-pointer"
+                >
+                  Confirmo que toda la información es correcta
+                </label>
+              </div>
+
               <!-- Feedback de error -->
               <div
                 v-if="saveError"
@@ -811,7 +1150,7 @@ onMounted(fetchClasificacion);
                 <button
                   type="submit"
                   class="btn-primary flex-1 text-sm flex items-center justify-center gap-2"
-                  :disabled="saving"
+                  :disabled="saving || !form.confirmado"
                 >
                   <svg
                     v-if="saving"
