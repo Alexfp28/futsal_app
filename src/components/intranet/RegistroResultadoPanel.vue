@@ -88,10 +88,6 @@ watch(
       tarjetas_amarillas: 0,
       tarjetas_rojas: 0,
     }));
-    golesDetalleLocal.value = Array.from(
-      { length: Math.max(0, Number(form.value.goles_local) || 0) },
-      () => ({ jugador_id: "", asistente_id: "" })
-    );
   }
 );
 
@@ -106,38 +102,6 @@ watch(
       tarjetas_amarillas: 0,
       tarjetas_rojas: 0,
     }));
-    golesDetalleVisitante.value = Array.from(
-      { length: Math.max(0, Number(form.value.goles_visitante) || 0) },
-      () => ({ jugador_id: "", asistente_id: "" })
-    );
-  }
-);
-
-watch(
-  () => form.value.goles_local,
-  (newCount) => {
-    const count = Math.max(0, Number(newCount) || 0);
-    const arr = golesDetalleLocal.value;
-    if (count > arr.length) {
-      for (let i = arr.length; i < count; i++)
-        arr.push({ jugador_id: "", asistente_id: "" });
-    } else {
-      golesDetalleLocal.value = arr.slice(0, count);
-    }
-  }
-);
-
-watch(
-  () => form.value.goles_visitante,
-  (newCount) => {
-    const count = Math.max(0, Number(newCount) || 0);
-    const arr = golesDetalleVisitante.value;
-    if (count > arr.length) {
-      for (let i = arr.length; i < count; i++)
-        arr.push({ jugador_id: "", asistente_id: "" });
-    } else {
-      golesDetalleVisitante.value = arr.slice(0, count);
-    }
   }
 );
 
@@ -148,7 +112,8 @@ watch(
     if (newVal) {
       await initializePanel();
     }
-  }
+  },
+  { immediate: true }
 );
 
 // Methods
@@ -183,7 +148,7 @@ const initializePanel = async () => {
 const fetchEquipos = async () => {
   const { data } = await supabase
     .from("equipos")
-    .select("id, nombre, color_principal, escudo_url, logo_url")
+    .select("id, nombre, color_principal, escudo_url")
     .order("nombre");
   equipos.value = data || [];
 };
