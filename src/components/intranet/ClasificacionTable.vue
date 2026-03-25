@@ -17,6 +17,7 @@ const equipos = ref([]);
 const saving = ref(false);
 const saveError = ref("");
 const saveSuccess = ref(false);
+const imageErrors = ref({});
 
 const form = ref({
   equipo_local_id: "",
@@ -50,6 +51,24 @@ const currentMapQuery = ref("Polideportivo Municipal");
 const equiposVisitante = computed(() =>
   equipos.value.filter((e) => e.id !== form.value.equipo_local_id),
 );
+const equipoLocalSeleccionado = computed(() =>
+  equipos.value.find((e) => e.id === form.value.equipo_local_id),
+);
+const equipoVisitanteSeleccionado = computed(() =>
+  equipos.value.find((e) => e.id === form.value.equipo_visitante_id),
+);
+
+const getEquipoLogo = (equipo) => equipo?.logo_url || equipo?.escudo_url || null;
+
+const hasEquipoLogo = (equipo) =>
+  Boolean(getEquipoLogo(equipo)) && !imageErrors.value[equipo?.id];
+
+const handleImageError = (equipoId) => {
+  imageErrors.value = {
+    ...imageErrors.value,
+    [equipoId]: true,
+  };
+};
 
 const watch = (import('vue')).then(m => m.watch);
 
@@ -83,7 +102,7 @@ const watch = (import('vue')).then(m => m.watch);
 const fetchEquipos = async () => {
   const { data } = await supabase
     .from("equipos")
-    .select("id, nombre, color_principal")
+    .select("id, nombre, color_principal, escudo_url")
     .order("nombre");
   equipos.value = data || [];
 };
@@ -253,6 +272,7 @@ const handleSave = async () => {
 const fetchClasificacion = async () => {
   loading.value = true;
   error.value = "";
+  imageErrors.value = {};
 
   try {
     const { data, error: supabaseError } = await supabase
@@ -442,7 +462,15 @@ onMounted(fetchClasificacion);
                   {{ index + 1 }}
                 </div>
                 <div class="flex items-center gap-2 min-w-0">
+                  <img
+                    v-if="hasEquipoLogo(row)"
+                    :src="getEquipoLogo(row)"
+                    :alt="`Escudo de ${row.nombre}`"
+                    class="w-7 h-7 rounded-full object-cover shrink-0 border border-notion-border bg-white"
+                    @error="handleImageError(row.id)"
+                  />
                   <span
+                    v-else
                     class="w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold text-white shrink-0"
                     :style="{
                       backgroundColor: row.color_principal || '#164bf0',
@@ -533,7 +561,15 @@ onMounted(fetchClasificacion);
                 </td>
                 <td class="px-3 py-2">
                   <div class="flex items-center gap-2">
+                    <img
+                      v-if="hasEquipoLogo(row)"
+                      :src="getEquipoLogo(row)"
+                      :alt="`Escudo de ${row.nombre}`"
+                      class="w-6 h-6 rounded-full object-cover border border-notion-border bg-white"
+                      @error="handleImageError(row.id)"
+                    />
                     <span
+                      v-else
                       class="w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold text-white"
                       :style="{
                         backgroundColor: row.color_principal || '#164bf0',
@@ -655,27 +691,27 @@ onMounted(fetchClasificacion);
               <div class="flex items-center gap-3">
                 <!-- Equipo local marcador -->
                 <div class="flex-1 text-center">
+                  <img
+                    v-if="hasEquipoLogo(equipoLocalSeleccionado)"
+                    :src="getEquipoLogo(equipoLocalSeleccionado)"
+                    :alt="`Escudo de ${equipoLocalSeleccionado?.nombre || 'Local'}`"
+                    class="mx-auto mb-1.5 w-10 h-10 rounded-full object-cover border border-notion-border bg-white"
+                    @error="handleImageError(form.equipo_local_id)"
+                  />
                   <div
+                    v-else
                     class="mx-auto mb-1.5 w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold text-white"
                     :style="{
                       backgroundColor:
-                        equipos.find((e) => e.id === form.equipo_local_id)
-                          ?.color_principal || '#164bf0',
+                        equipoLocalSeleccionado?.color_principal || '#164bf0',
                     }"
                   >
-                    {{
-                      equipos
-                        .find((e) => e.id === form.equipo_local_id)
-                        ?.nombre?.charAt(0) || "L"
-                    }}
+                    {{ equipoLocalSeleccionado?.nombre?.charAt(0) || "L" }}
                   </div>
                   <p
                     class="text-[11px] text-notion-muted truncate max-w-[90px] mx-auto"
                   >
-                    {{
-                      equipos.find((e) => e.id === form.equipo_local_id)
-                        ?.nombre || "Local"
-                    }}
+                    {{ equipoLocalSeleccionado?.nombre || "Local" }}
                   </p>
                 </div>
                 <!-- Marcador -->
@@ -692,27 +728,27 @@ onMounted(fetchClasificacion);
                 </div>
                 <!-- Equipo visitante marcador -->
                 <div class="flex-1 text-center">
+                  <img
+                    v-if="hasEquipoLogo(equipoVisitanteSeleccionado)"
+                    :src="getEquipoLogo(equipoVisitanteSeleccionado)"
+                    :alt="`Escudo de ${equipoVisitanteSeleccionado?.nombre || 'Visitante'}`"
+                    class="mx-auto mb-1.5 w-10 h-10 rounded-full object-cover border border-notion-border bg-white"
+                    @error="handleImageError(form.equipo_visitante_id)"
+                  />
                   <div
+                    v-else
                     class="mx-auto mb-1.5 w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold text-white"
                     :style="{
                       backgroundColor:
-                        equipos.find((e) => e.id === form.equipo_visitante_id)
-                          ?.color_principal || '#6b7280',
+                        equipoVisitanteSeleccionado?.color_principal || '#6b7280',
                     }"
                   >
-                    {{
-                      equipos
-                        .find((e) => e.id === form.equipo_visitante_id)
-                        ?.nombre?.charAt(0) || "V"
-                    }}
+                    {{ equipoVisitanteSeleccionado?.nombre?.charAt(0) || "V" }}
                   </div>
                   <p
                     class="text-[11px] text-notion-muted truncate max-w-[90px] mx-auto"
                   >
-                    {{
-                      equipos.find((e) => e.id === form.equipo_visitante_id)
-                        ?.nombre || "Visitante"
-                    }}
+                    {{ equipoVisitanteSeleccionado?.nombre || "Visitante" }}
                   </p>
                 </div>
               </div>

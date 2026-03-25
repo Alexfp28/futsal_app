@@ -7,31 +7,26 @@ import { UserGroupIcon, TrophyIcon } from "@heroicons/vue/24/outline";
 const equipos = ref([]);
 const loading = ref(true);
 const error = ref(null);
+const imageErrors = ref({});
 
 // Función para obtener la ruta del escudo
-const getEscudoPath = (nombre) => {
-  const slug = nombre
-    .toLowerCase()
-    .replace(/\s+/g, "-")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "");
-  return `/images/escudos/${slug}.png`;
-};
+const getEquipoLogo = (equipo) => equipo?.logo_url || equipo?.escudo_url || null;
 
 // Función para manejar error de imagen
-const handleImageError = (event) => {
-  // Ocultar imagen con error
-  event.target.style.opacity = "0";
-  // Mostrar el placeholder (siguiente elemento hermano)
-  const placeholder = event.target.nextElementSibling;
-  if (placeholder && placeholder.classList.contains("absolute")) {
-    placeholder.style.display = "flex";
-  }
+const hasEquipoLogo = (equipo) =>
+  Boolean(getEquipoLogo(equipo)) && !imageErrors.value[equipo.id];
+
+const handleImageError = (equipoId) => {
+  imageErrors.value = {
+    ...imageErrors.value,
+    [equipoId]: true,
+  };
 };
 
 const loadEquipos = async () => {
   loading.value = true;
   error.value = null;
+  imageErrors.value = {};
   try {
     const { data, err } = await supabase
       .from("equipos")
@@ -149,15 +144,16 @@ const equiposEjemplo = [
         >
           <!-- Imagen del escudo -->
           <img
-            :src="getEscudoPath(equipo.nombre)"
+            v-if="hasEquipoLogo(equipo)"
+            :src="getEquipoLogo(equipo)"
             :alt="`Escudo de ${equipo.nombre}`"
             class="w-24 h-24 object-contain drop-shadow-lg group-hover:scale-110 transition-transform duration-300"
-            @error="handleImageError"
+            @error="handleImageError(equipo.id)"
           />
           <!-- Placeholder si no hay imagen -->
           <div
+            v-else
             class="absolute inset-0 flex items-center justify-center"
-            :style="{ display: 'none' }"
           >
             <div
               class="w-24 h-24 rounded-2xl flex items-center justify-center text-white font-bold text-4xl shadow-lg"
