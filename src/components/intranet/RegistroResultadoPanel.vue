@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch, onMounted } from "vue";
+import { computed, ref, watch } from "vue";
 import { supabase } from "@/lib/supabase";
 
 const props = defineProps({
@@ -31,7 +31,6 @@ const form = ref({
   confirmado: false,
 });
 
-// Data
 const equipos = ref([]);
 const scheduledMatches = ref([]);
 const selectedScheduledMatch = ref(null);
@@ -39,21 +38,20 @@ const jugadoresLocal = ref([]);
 const jugadoresVisitante = ref([]);
 const statsLocal = ref([]);
 const statsVisitante = ref([]);
-const golesDetalleLocal = ref([]);
-const golesDetalleVisitante = ref([]);
+const detalleJugadoresLocal = ref([]);
+const detalleJugadoresVisitante = ref([]);
 const currentMapQuery = ref("Polideportivo Municipal");
 
-// Computed properties
 const equiposVisitante = computed(() =>
-  equipos.value.filter((e) => e.id !== form.value.equipo_local_id)
+  equipos.value.filter((equipo) => equipo.id !== form.value.equipo_local_id)
 );
 
 const equipoLocalSeleccionado = computed(() =>
-  equipos.value.find((e) => e.id === form.value.equipo_local_id)
+  equipos.value.find((equipo) => equipo.id === form.value.equipo_local_id)
 );
 
 const equipoVisitanteSeleccionado = computed(() =>
-  equipos.value.find((e) => e.id === form.value.equipo_visitante_id)
+  equipos.value.find((equipo) => equipo.id === form.value.equipo_visitante_id)
 );
 
 const selectedMapUrl = computed(() => {
@@ -61,19 +59,32 @@ const selectedMapUrl = computed(() => {
   return `https://maps.google.com/maps?q=${encodeURIComponent(currentMapQuery.value)}&hl=es&z=15&output=embed`;
 });
 
-// Watchers
+const totalGolesDetalleLocal = computed(() =>
+  detalleJugadoresLocal.value.reduce((acc, item) => acc + (Number(item.goles) || 0), 0)
+);
+
+const totalGolesDetalleVisitante = computed(() =>
+  detalleJugadoresVisitante.value.reduce((acc, item) => acc + (Number(item.goles) || 0), 0)
+);
+
+const necesitaDetalleJugadores = computed(
+  () =>
+    (Number(form.value.goles_local) > 0 && equipoLocalSeleccionado.value) ||
+    (Number(form.value.goles_visitante) > 0 && equipoVisitanteSeleccionado.value)
+);
+
 watch(
   () => selectedScheduledMatch.value,
   (selectedId) => {
-    if (selectedId) {
-      const match = scheduledMatches.value.find((m) => m.id === selectedId);
-      if (match) {
-        form.value.equipo_local_id = match.equipo_local_id;
-        form.value.equipo_visitante_id = match.equipo_visitante_id;
-        form.value.fecha = new Date(match.fecha).toISOString().slice(0, 10);
-        form.value.lugar = match.lugar;
-      }
-    }
+    if (!selectedId) return;
+
+    const match = scheduledMatches.value.find((item) => item.id === selectedId);
+    if (!match) return;
+
+    form.value.equipo_local_id = match.equipo_local_id;
+    form.value.equipo_visitante_id = match.equipo_visitante_id;
+    form.value.fecha = new Date(match.fecha).toISOString().slice(0, 10);
+    form.value.lugar = match.lugar;
   }
 );
 
@@ -81,13 +92,14 @@ watch(
   () => form.value.equipo_local_id,
   async (newId) => {
     jugadoresLocal.value = await fetchJugadoresByEquipo(newId);
-    statsLocal.value = jugadoresLocal.value.map((j) => ({
-      jugador_id: j.id,
+    statsLocal.value = jugadoresLocal.value.map((jugador) => ({
+      jugador_id: jugador.id,
       goles: 0,
       asistencias: 0,
       tarjetas_amarillas: 0,
       tarjetas_rojas: 0,
     }));
+    detalleJugadoresLocal.value = normalizeDetalleRows(detalleJugadoresLocal.value, jugadoresLocal.value);
   }
 );
 
@@ -95,17 +107,42 @@ watch(
   () => form.value.equipo_visitante_id,
   async (newId) => {
     jugadoresVisitante.value = await fetchJugadoresByEquipo(newId);
-    statsVisitante.value = jugadoresVisitante.value.map((j) => ({
-      jugador_id: j.id,
+    statsVisitante.value = jugadoresVisitante.value.map((jugador) => ({
+      jugador_id: jugador.id,
       goles: 0,
       asistencias: 0,
       tarjetas_amarillas: 0,
       tarjetas_rojas: 0,
     }));
+    detalleJugadoresVisitante.value = normalizeDetalleRows(
+      detalleJugadoresVisitante.value,
+      jugadoresVisitante.value
+    );
   }
 );
 
-// Cuando se abre el panel, cargar datos
+watch(
+  () => form.value.goles_local,
+  (goles) => {
+    detalleJugadoresLocal.value = syncDetalleRowsWithGoals(
+      detalleJugadoresLocal.value,
+      Number(goles) || 0
+    );
+  },
+  { immediate: true }
+);
+
+watch(
+  () => form.value.goles_visitante,
+  (goles) => {
+    detalleJugadoresVisitante.value = syncDetalleRowsWithGoals(
+      detalleJugadoresVisitante.value,
+      Number(goles) || 0
+    );
+  },
+  { immediate: true }
+);
+
 watch(
   () => props.show,
   async (newVal) => {
@@ -116,7 +153,6 @@ watch(
   { immediate: true }
 );
 
-// Methods
 const initializePanel = async () => {
   saveError.value = "";
   saveSuccess.value = false;
@@ -137,11 +173,13 @@ const initializePanel = async () => {
   selectedScheduledMatch.value = null;
   statsLocal.value = [];
   statsVisitante.value = [];
-  golesDetalleLocal.value = [];
-  golesDetalleVisitante.value = [];
+  detalleJugadoresLocal.value = [];
+  detalleJugadoresVisitante.value = [];
   currentMapQuery.value = "Polideportivo Municipal";
 
-  if (equipos.value.length === 0) await fetchEquipos();
+  if (equipos.value.length === 0) {
+    await fetchEquipos();
+  }
   await fetchScheduledMatches();
 };
 
@@ -150,18 +188,45 @@ const fetchEquipos = async () => {
     .from("equipos")
     .select("id, nombre, color_principal, escudo_url")
     .order("nombre");
+
   equipos.value = data || [];
 };
 
 const fetchJugadoresByEquipo = async (equipoId) => {
   if (!equipoId) return [];
-  const { data } = await supabase
+
+  const { data, error } = await supabase
     .from("profiles")
     .select("id, nombre, numero_camiseta, posicion")
     .eq("equipo_id", equipoId)
-    .eq("rol", "jugador")
+    .in("rol", ["jugador", "capitan"])
     .order("nombre");
-  return data || [];
+
+  if (error) {
+    console.error("Error cargando jugadores por equipo:", error);
+    return [];
+  }
+
+  if (data?.length) {
+    return data;
+  }
+
+  const { data: plantillaData, error: plantillaError } = await supabase
+    .from("plantilla")
+    .select(
+      "jugador_id, perfil:profiles!plantilla_jugador_id_fkey(id, nombre, numero_camiseta, posicion)"
+    )
+    .eq("equipo_id", equipoId);
+
+  if (plantillaError) {
+    console.error("Error cargando jugadores desde plantilla:", plantillaError);
+    return [];
+  }
+
+  return (plantillaData || [])
+    .map((item) => item.perfil)
+    .filter(Boolean)
+    .sort((a, b) => (a.nombre || "").localeCompare(b.nombre || "", "es"));
 };
 
 const fetchScheduledMatches = async () => {
@@ -172,6 +237,7 @@ const fetchScheduledMatches = async () => {
     )
     .eq("estado", "programado")
     .order("fecha");
+
   scheduledMatches.value = data || [];
 };
 
@@ -193,6 +259,77 @@ const updateMap = () => {
   }
 };
 
+function createDetalleRow() {
+  return {
+    jugador_id: "",
+    goles: 0,
+    asistencias: 0,
+  };
+}
+
+function normalizeDetalleRows(rows = [], jugadores = []) {
+  const validPlayerIds = new Set(jugadores.map((jugador) => jugador.id));
+  return (rows || []).map((row) => ({
+    jugador_id: validPlayerIds.has(row.jugador_id) ? row.jugador_id : "",
+    goles: Number(row.goles) || 0,
+    asistencias: Number(row.asistencias) || 0,
+  }));
+}
+
+function syncDetalleRowsWithGoals(rows = [], targetGoals = 0) {
+  if (targetGoals <= 0) return [];
+
+  const normalizedRows = rows.length
+    ? rows.map((row) => ({
+        jugador_id: row.jugador_id || "",
+        goles: Number(row.goles) || 0,
+        asistencias: Number(row.asistencias) || 0,
+      }))
+    : [createDetalleRow()];
+
+  const totalGoals = normalizedRows.reduce((acc, row) => acc + row.goles, 0);
+  if (totalGoals === 0) {
+    normalizedRows[0].goles = targetGoals;
+  }
+
+  return normalizedRows;
+}
+
+const addDetalleRow = (side) => {
+  if (side === "local") {
+    detalleJugadoresLocal.value = [...detalleJugadoresLocal.value, createDetalleRow()];
+    return;
+  }
+
+  detalleJugadoresVisitante.value = [...detalleJugadoresVisitante.value, createDetalleRow()];
+};
+
+const removeDetalleRow = (side, index) => {
+  if (side === "local") {
+    detalleJugadoresLocal.value = detalleJugadoresLocal.value.filter((_, idx) => idx !== index);
+    if (detalleJugadoresLocal.value.length === 0 && Number(form.value.goles_local) > 0) {
+      detalleJugadoresLocal.value = [createDetalleRow()];
+    }
+    return;
+  }
+
+  detalleJugadoresVisitante.value = detalleJugadoresVisitante.value.filter((_, idx) => idx !== index);
+  if (detalleJugadoresVisitante.value.length === 0 && Number(form.value.goles_visitante) > 0) {
+    detalleJugadoresVisitante.value = [createDetalleRow()];
+  }
+};
+
+function getDetalleSummary(rows = []) {
+  return rows.reduce(
+    (acc, row) => {
+      acc.goles += Number(row.goles) || 0;
+      acc.asistencias += Number(row.asistencias) || 0;
+      return acc;
+    },
+    { goles: 0, asistencias: 0 }
+  );
+}
+
 const handleSave = async () => {
   saveError.value = "";
   saveSuccess.value = false;
@@ -201,20 +338,40 @@ const handleSave = async () => {
     saveError.value = "Selecciona ambos equipos.";
     return;
   }
+
   if (form.value.equipo_local_id === form.value.equipo_visitante_id) {
     saveError.value = "Los equipos local y visitante no pueden ser el mismo.";
     return;
   }
+
   if (!form.value.fecha) {
     saveError.value = "Indica la fecha del partido.";
     return;
   }
+
+  if (
+    Number(form.value.goles_local) > 0 &&
+    totalGolesDetalleLocal.value !== Number(form.value.goles_local)
+  ) {
+    saveError.value = "Los goles asignados al equipo local deben coincidir con el marcador.";
+    return;
+  }
+
+  if (
+    Number(form.value.goles_visitante) > 0 &&
+    totalGolesDetalleVisitante.value !== Number(form.value.goles_visitante)
+  ) {
+    saveError.value = "Los goles asignados al equipo visitante deben coincidir con el marcador.";
+    return;
+  }
+
   if (!form.value.confirmado) {
     saveError.value = "Debes confirmar que la información es correcta.";
     return;
   }
 
   saving.value = true;
+
   try {
     const partidoData = {
       equipo_local_id: form.value.equipo_local_id,
@@ -233,29 +390,30 @@ const handleSave = async () => {
     };
 
     let partidoId;
+
     if (selectedScheduledMatch.value) {
-      // Update existing scheduled match
       const { error: updateError } = await supabase
         .from("partidos")
         .update(partidoData)
         .eq("id", selectedScheduledMatch.value);
+
       if (updateError) throw updateError;
       partidoId = selectedScheduledMatch.value;
     } else {
-      // Insert new match
       const { data, error: insertError } = await supabase
         .from("partidos")
         .insert(partidoData)
         .select("id")
         .single();
+
       if (insertError) throw insertError;
       partidoId = data.id;
     }
 
-    // Build stats map merging goal details + card stats
     const statsMap = {};
     const addStat = (jugadorId, field, amount = 1) => {
       if (!jugadorId) return;
+
       if (!statsMap[jugadorId]) {
         statsMap[jugadorId] = {
           partido_id: partidoId,
@@ -266,30 +424,38 @@ const handleSave = async () => {
           tarjetas_rojas: 0,
         };
       }
+
       statsMap[jugadorId][field] += amount;
     };
 
-    // Goles y asistencias desde el detalle de goles
-    [...golesDetalleLocal.value, ...golesDetalleVisitante.value].forEach((gol) => {
-      addStat(gol.jugador_id, "goles");
-      addStat(gol.asistente_id, "asistencias");
+    [...detalleJugadoresLocal.value, ...detalleJugadoresVisitante.value].forEach((detalle) => {
+      if (detalle.goles) {
+        addStat(detalle.jugador_id, "goles", Number(detalle.goles));
+      }
+      if (detalle.asistencias) {
+        addStat(detalle.jugador_id, "asistencias", Number(detalle.asistencias));
+      }
     });
 
-    // Tarjetas desde la sección de estadísticas
-    [...statsLocal.value, ...statsVisitante.value].forEach((s) => {
-      if (!s.jugador_id) return;
-      if (s.tarjetas_amarillas) addStat(s.jugador_id, "tarjetas_amarillas", s.tarjetas_amarillas);
-      if (s.tarjetas_rojas) addStat(s.jugador_id, "tarjetas_rojas", s.tarjetas_rojas);
+    [...statsLocal.value, ...statsVisitante.value].forEach((stat) => {
+      if (!stat.jugador_id) return;
+      if (stat.tarjetas_amarillas) {
+        addStat(stat.jugador_id, "tarjetas_amarillas", stat.tarjetas_amarillas);
+      }
+      if (stat.tarjetas_rojas) {
+        addStat(stat.jugador_id, "tarjetas_rojas", stat.tarjetas_rojas);
+      }
     });
 
     const allStats = Object.values(statsMap).filter(
-      (s) => s.goles || s.asistencias || s.tarjetas_amarillas || s.tarjetas_rojas
+      (stat) => stat.goles || stat.asistencias || stat.tarjetas_amarillas || stat.tarjetas_rojas
     );
 
     if (allStats.length > 0) {
       const { error: statsError } = await supabase
         .from("estadisticas_partido_jugador")
         .insert(allStats);
+
       if (statsError) throw statsError;
     }
 
@@ -300,8 +466,8 @@ const handleSave = async () => {
       saveSuccess.value = false;
       emit("close");
     }, 1800);
-  } catch (e) {
-    console.error("Error guardando resultado:", e);
+  } catch (error) {
+    console.error("Error guardando resultado:", error);
     saveError.value = "No se pudo guardar el resultado. Inténtalo de nuevo.";
   } finally {
     saving.value = false;
@@ -315,28 +481,25 @@ const closePanel = () => {
 
 <template>
   <Teleport to="body">
-    <!-- Backdrop -->
     <Transition name="backdrop">
       <div
         v-if="show"
-        class="fixed inset-0 bg-black/30 z-40 backdrop-blur-sm"
+        class="fixed inset-0 z-40 bg-black/30 backdrop-blur-sm"
         @click="closePanel"
       />
     </Transition>
 
-    <!-- Slide-over panel -->
     <Transition name="slideover">
       <div
         v-if="show"
         class="fixed inset-y-0 right-0 z-50 flex w-full max-w-lg flex-col bg-white shadow-2xl"
         @click.stop
       >
-        <!-- Header -->
         <div class="flex items-center justify-between border-b border-notion-border bg-white px-4 py-3 sm:px-6">
           <h2 class="text-lg font-semibold text-notion-text">Registrar resultado</h2>
           <button
             type="button"
-            class="text-notion-muted hover:text-notion-text transition-colors"
+            class="text-notion-muted transition-colors hover:text-notion-text"
             @click="closePanel"
           >
             <svg
@@ -344,20 +507,18 @@ const closePanel = () => {
               xmlns="http://www.w3.org/2000/svg"
               fill="none"
               viewBox="0 0 24 24"
-              stroke-width="1.5"
               stroke="currentColor"
+              stroke-width="1.5"
             >
-              <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+              <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
             </svg>
           </button>
         </div>
 
-        <!-- Content (scrollable) -->
         <div class="flex-1 overflow-y-auto">
           <form class="space-y-6 px-4 py-6 sm:px-6">
-            <!-- Partido programado -->
             <div>
-              <label class="block text-sm font-medium text-notion-text mb-2">
+              <label class="mb-2 block text-sm font-medium text-notion-text">
                 Seleccionar partido programado (opcional)
               </label>
               <select
@@ -365,11 +526,7 @@ const closePanel = () => {
                 class="w-full rounded-lg border border-notion-border px-3 py-2 text-sm text-notion-text placeholder-notion-muted focus:outline-none focus:ring-2 focus:ring-primary"
               >
                 <option value="">-- Ninguno --</option>
-                <option
-                  v-for="match in scheduledMatches"
-                  :key="match.id"
-                  :value="match.id"
-                >
+                <option v-for="match in scheduledMatches" :key="match.id" :value="match.id">
                   {{ match.equipo_local?.nombre }} vs
                   {{ match.equipo_visitante?.nombre }} ({{
                     new Date(match.fecha).toLocaleDateString("es-ES")
@@ -378,10 +535,9 @@ const closePanel = () => {
               </select>
             </div>
 
-            <!-- Equipos -->
             <div class="space-y-4">
               <div>
-                <label class="block text-sm font-medium text-notion-text mb-2">
+                <label class="mb-2 block text-sm font-medium text-notion-text">
                   Equipo local <span class="text-red-500">*</span>
                 </label>
                 <select
@@ -389,18 +545,14 @@ const closePanel = () => {
                   class="w-full rounded-lg border border-notion-border px-3 py-2 text-sm text-notion-text focus:outline-none focus:ring-2 focus:ring-primary"
                 >
                   <option value="">-- Selecciona un equipo --</option>
-                  <option
-                    v-for="equipo in equipos"
-                    :key="equipo.id"
-                    :value="equipo.id"
-                  >
+                  <option v-for="equipo in equipos" :key="equipo.id" :value="equipo.id">
                     {{ equipo.nombre }}
                   </option>
                 </select>
               </div>
 
               <div>
-                <label class="block text-sm font-medium text-notion-text mb-2">
+                <label class="mb-2 block text-sm font-medium text-notion-text">
                   Equipo visitante <span class="text-red-500">*</span>
                 </label>
                 <select
@@ -408,28 +560,22 @@ const closePanel = () => {
                   class="w-full rounded-lg border border-notion-border px-3 py-2 text-sm text-notion-text focus:outline-none focus:ring-2 focus:ring-primary"
                 >
                   <option value="">-- Selecciona un equipo --</option>
-                  <option
-                    v-for="equipo in equiposVisitante"
-                    :key="equipo.id"
-                    :value="equipo.id"
-                  >
+                  <option v-for="equipo in equiposVisitante" :key="equipo.id" :value="equipo.id">
                     {{ equipo.nombre }}
                   </option>
                 </select>
               </div>
             </div>
 
-            <!-- Marcador -->
             <div class="rounded-lg bg-notion-bg/50 p-4">
-              <p class="text-xs font-medium text-notion-muted mb-3 uppercase">Marcador</p>
+              <p class="mb-3 text-xs font-medium uppercase text-notion-muted">Marcador</p>
               <div class="flex items-center justify-between gap-3">
-                <!-- Equipo local marcador -->
                 <div class="flex-1 text-center">
                   <img
                     v-if="hasEquipoLogo(equipoLocalSeleccionado)"
                     :src="getEquipoLogo(equipoLocalSeleccionado)"
                     :alt="`Escudo de ${equipoLocalSeleccionado?.nombre || 'Local'}`"
-                    class="mx-auto mb-1.5 w-10 h-10 rounded-full object-cover border border-notion-border bg-white"
+                    class="mx-auto mb-1.5 h-10 w-10 rounded-full border border-notion-border bg-white object-cover"
                     @error="() => handleImageError(equipoLocalSeleccionado?.id)"
                   />
                   <p class="text-xs text-notion-muted">
@@ -444,7 +590,7 @@ const closePanel = () => {
                     min="0"
                     class="w-14 rounded-lg border border-notion-border bg-white px-2 py-2 text-center text-lg font-bold text-notion-text focus:outline-none focus:ring-2 focus:ring-primary"
                   />
-                  <span class="flex items-center text-notion-muted">–</span>
+                  <span class="flex items-center text-notion-muted">-</span>
                   <input
                     v-model.number="form.goles_visitante"
                     type="number"
@@ -453,13 +599,12 @@ const closePanel = () => {
                   />
                 </div>
 
-                <!-- Equipo visitante marcador -->
                 <div class="flex-1 text-center">
                   <img
                     v-if="hasEquipoLogo(equipoVisitanteSeleccionado)"
                     :src="getEquipoLogo(equipoVisitanteSeleccionado)"
                     :alt="`Escudo de ${equipoVisitanteSeleccionado?.nombre || 'Visitante'}`"
-                    class="mx-auto mb-1.5 w-10 h-10 rounded-full object-cover border border-notion-border bg-white"
+                    class="mx-auto mb-1.5 h-10 w-10 rounded-full border border-notion-border bg-white object-cover"
                     @error="() => handleImageError(equipoVisitanteSeleccionado?.id)"
                   />
                   <p class="text-xs text-notion-muted">
@@ -469,140 +614,201 @@ const closePanel = () => {
               </div>
             </div>
 
-            <!-- Detalle de goles -->
             <div
-              v-if="(form.goles_local > 0 && equipoLocalSeleccionado) || (form.goles_visitante > 0 && equipoVisitanteSeleccionado)"
-              class="space-y-4"
+              v-if="necesitaDetalleJugadores"
+              class="space-y-4 rounded-2xl border border-notion-border bg-white p-4 shadow-sm"
             >
-              <p class="text-xs font-medium text-notion-muted uppercase tracking-wide">
-                Detalle de goles
-              </p>
-
-              <!-- Goles equipo local -->
-              <div v-if="form.goles_local > 0 && equipoLocalSeleccionado">
-                <p class="text-sm font-medium text-notion-text mb-2 flex items-center gap-1.5">
-                  <img
-                    v-if="hasEquipoLogo(equipoLocalSeleccionado)"
-                    :src="getEquipoLogo(equipoLocalSeleccionado)"
-                    class="w-4 h-4 rounded-full object-cover"
-                    @error="() => handleImageError(equipoLocalSeleccionado.id)"
-                  />
-                  {{ equipoLocalSeleccionado.nombre }}
-                  <span class="text-notion-muted font-normal">({{ form.goles_local }} {{ form.goles_local === 1 ? 'gol' : 'goles' }})</span>
+              <div>
+                <p class="text-xs font-medium uppercase tracking-[0.18em] text-notion-muted">
+                  Introducir detalles
                 </p>
+                <p class="mt-1 text-sm text-notion-muted">
+                  Reparte los goles y asistencias entre los jugadores. Los goles deben cuadrar con el marcador.
+                </p>
+              </div>
+
+              <div
+                v-if="form.goles_local > 0 && equipoLocalSeleccionado"
+                class="space-y-3 rounded-xl border border-notion-border bg-notion-bg/40 p-3"
+              >
+                <div class="flex items-center justify-between gap-3">
+                  <p class="flex items-center gap-2 text-sm font-medium text-notion-text">
+                    <img
+                      v-if="hasEquipoLogo(equipoLocalSeleccionado)"
+                      :src="getEquipoLogo(equipoLocalSeleccionado)"
+                      class="h-5 w-5 rounded-full object-cover"
+                      @error="() => handleImageError(equipoLocalSeleccionado.id)"
+                    />
+                    {{ equipoLocalSeleccionado.nombre }}
+                  </p>
+                  <span
+                    class="rounded-full px-2.5 py-1 text-xs font-medium"
+                    :class="
+                      totalGolesDetalleLocal === Number(form.goles_local)
+                        ? 'bg-green-50 text-green-700'
+                        : 'bg-amber-50 text-amber-700'
+                    "
+                  >
+                    {{ totalGolesDetalleLocal }}/{{ form.goles_local }} goles asignados
+                  </span>
+                </div>
+
                 <div class="space-y-2">
                   <div
-                    v-for="(gol, idx) in golesDetalleLocal"
-                    :key="idx"
-                    class="flex items-center gap-2 rounded-lg bg-notion-bg/50 border border-notion-border p-2.5"
+                    v-for="(detalle, idx) in detalleJugadoresLocal"
+                    :key="`local-${idx}`"
+                    class="grid grid-cols-1 gap-2 rounded-xl border border-notion-border bg-white p-3 sm:grid-cols-[minmax(0,1fr)_88px_104px_40px]"
                   >
-                    <span class="flex-shrink-0 flex items-center justify-center w-5 h-5 rounded-full bg-primary/10 text-primary text-xs font-bold">
-                      {{ idx + 1 }}
-                    </span>
-                    <div class="flex-1 grid grid-cols-2 gap-2">
-                      <div>
-                        <label class="block text-xs text-notion-muted mb-1">Goleador</label>
-                        <select
-                          v-model="gol.jugador_id"
-                          class="w-full rounded border border-notion-border px-2 py-1.5 text-xs text-notion-text bg-white focus:outline-none focus:ring-2 focus:ring-primary"
-                        >
-                          <option value="">— Desconocido —</option>
-                          <option
-                            v-for="j in jugadoresLocal"
-                            :key="j.id"
-                            :value="j.id"
-                          >
-                            {{ j.nombre }}{{ j.numero_camiseta ? ` #${j.numero_camiseta}` : '' }}
-                          </option>
-                        </select>
-                      </div>
-                      <div>
-                        <label class="block text-xs text-notion-muted mb-1">Asistencia</label>
-                        <select
-                          v-model="gol.asistente_id"
-                          class="w-full rounded border border-notion-border px-2 py-1.5 text-xs text-notion-text bg-white focus:outline-none focus:ring-2 focus:ring-primary"
-                        >
-                          <option value="">— Sin asistencia —</option>
-                          <option
-                            v-for="j in jugadoresLocal"
-                            :key="j.id"
-                            :value="j.id"
-                            :disabled="j.id === gol.jugador_id"
-                          >
-                            {{ j.nombre }}{{ j.numero_camiseta ? ` #${j.numero_camiseta}` : '' }}
-                          </option>
-                        </select>
-                      </div>
+                    <div>
+                      <label class="mb-1 block text-xs text-notion-muted">Jugador</label>
+                      <select
+                        v-model="detalle.jugador_id"
+                        class="w-full rounded-lg border border-notion-border px-3 py-2 text-sm text-notion-text focus:outline-none focus:ring-2 focus:ring-primary"
+                      >
+                        <option value="">Selecciona jugador</option>
+                        <option v-for="j in jugadoresLocal" :key="j.id" :value="j.id">
+                          {{ j.nombre }}{{ j.numero_camiseta ? ` #${j.numero_camiseta}` : "" }}
+                        </option>
+                      </select>
+                    </div>
+                    <div>
+                      <label class="mb-1 block text-xs text-notion-muted">Goles</label>
+                      <input
+                        v-model.number="detalle.goles"
+                        type="number"
+                        min="0"
+                        class="w-full rounded-lg border border-notion-border px-3 py-2 text-sm text-notion-text focus:outline-none focus:ring-2 focus:ring-primary"
+                      />
+                    </div>
+                    <div>
+                      <label class="mb-1 block text-xs text-notion-muted">Asistencias</label>
+                      <input
+                        v-model.number="detalle.asistencias"
+                        type="number"
+                        min="0"
+                        class="w-full rounded-lg border border-notion-border px-3 py-2 text-sm text-notion-text focus:outline-none focus:ring-2 focus:ring-primary"
+                      />
+                    </div>
+                    <div class="flex items-end">
+                      <button
+                        type="button"
+                        class="h-10 w-10 rounded-lg border border-notion-border text-notion-muted transition-colors hover:bg-notion-bg hover:text-notion-text disabled:cursor-not-allowed disabled:opacity-40"
+                        :disabled="detalleJugadoresLocal.length === 1"
+                        @click="removeDetalleRow('local', idx)"
+                      >
+                        ×
+                      </button>
                     </div>
                   </div>
                 </div>
+
+                <div class="flex items-center justify-between gap-3">
+                  <p class="text-xs text-notion-muted">
+                    {{ getDetalleSummary(detalleJugadoresLocal).asistencias }} asistencias registradas
+                  </p>
+                  <button
+                    type="button"
+                    class="rounded-lg border border-notion-border px-3 py-2 text-sm font-medium text-notion-text transition-colors hover:bg-white"
+                    @click="addDetalleRow('local')"
+                  >
+                    Añadir jugador
+                  </button>
+                </div>
               </div>
 
-              <!-- Goles equipo visitante -->
-              <div v-if="form.goles_visitante > 0 && equipoVisitanteSeleccionado">
-                <p class="text-sm font-medium text-notion-text mb-2 flex items-center gap-1.5">
-                  <img
-                    v-if="hasEquipoLogo(equipoVisitanteSeleccionado)"
-                    :src="getEquipoLogo(equipoVisitanteSeleccionado)"
-                    class="w-4 h-4 rounded-full object-cover"
-                    @error="() => handleImageError(equipoVisitanteSeleccionado.id)"
-                  />
-                  {{ equipoVisitanteSeleccionado.nombre }}
-                  <span class="text-notion-muted font-normal">({{ form.goles_visitante }} {{ form.goles_visitante === 1 ? 'gol' : 'goles' }})</span>
-                </p>
+              <div
+                v-if="form.goles_visitante > 0 && equipoVisitanteSeleccionado"
+                class="space-y-3 rounded-xl border border-notion-border bg-notion-bg/40 p-3"
+              >
+                <div class="flex items-center justify-between gap-3">
+                  <p class="flex items-center gap-2 text-sm font-medium text-notion-text">
+                    <img
+                      v-if="hasEquipoLogo(equipoVisitanteSeleccionado)"
+                      :src="getEquipoLogo(equipoVisitanteSeleccionado)"
+                      class="h-5 w-5 rounded-full object-cover"
+                      @error="() => handleImageError(equipoVisitanteSeleccionado.id)"
+                    />
+                    {{ equipoVisitanteSeleccionado.nombre }}
+                  </p>
+                  <span
+                    class="rounded-full px-2.5 py-1 text-xs font-medium"
+                    :class="
+                      totalGolesDetalleVisitante === Number(form.goles_visitante)
+                        ? 'bg-green-50 text-green-700'
+                        : 'bg-amber-50 text-amber-700'
+                    "
+                  >
+                    {{ totalGolesDetalleVisitante }}/{{ form.goles_visitante }} goles asignados
+                  </span>
+                </div>
+
                 <div class="space-y-2">
                   <div
-                    v-for="(gol, idx) in golesDetalleVisitante"
-                    :key="idx"
-                    class="flex items-center gap-2 rounded-lg bg-notion-bg/50 border border-notion-border p-2.5"
+                    v-for="(detalle, idx) in detalleJugadoresVisitante"
+                    :key="`visitante-${idx}`"
+                    class="grid grid-cols-1 gap-2 rounded-xl border border-notion-border bg-white p-3 sm:grid-cols-[minmax(0,1fr)_88px_104px_40px]"
                   >
-                    <span class="flex-shrink-0 flex items-center justify-center w-5 h-5 rounded-full bg-primary/10 text-primary text-xs font-bold">
-                      {{ idx + 1 }}
-                    </span>
-                    <div class="flex-1 grid grid-cols-2 gap-2">
-                      <div>
-                        <label class="block text-xs text-notion-muted mb-1">Goleador</label>
-                        <select
-                          v-model="gol.jugador_id"
-                          class="w-full rounded border border-notion-border px-2 py-1.5 text-xs text-notion-text bg-white focus:outline-none focus:ring-2 focus:ring-primary"
-                        >
-                          <option value="">— Desconocido —</option>
-                          <option
-                            v-for="j in jugadoresVisitante"
-                            :key="j.id"
-                            :value="j.id"
-                          >
-                            {{ j.nombre }}{{ j.numero_camiseta ? ` #${j.numero_camiseta}` : '' }}
-                          </option>
-                        </select>
-                      </div>
-                      <div>
-                        <label class="block text-xs text-notion-muted mb-1">Asistencia</label>
-                        <select
-                          v-model="gol.asistente_id"
-                          class="w-full rounded border border-notion-border px-2 py-1.5 text-xs text-notion-text bg-white focus:outline-none focus:ring-2 focus:ring-primary"
-                        >
-                          <option value="">— Sin asistencia —</option>
-                          <option
-                            v-for="j in jugadoresVisitante"
-                            :key="j.id"
-                            :value="j.id"
-                            :disabled="j.id === gol.jugador_id"
-                          >
-                            {{ j.nombre }}{{ j.numero_camiseta ? ` #${j.numero_camiseta}` : '' }}
-                          </option>
-                        </select>
-                      </div>
+                    <div>
+                      <label class="mb-1 block text-xs text-notion-muted">Jugador</label>
+                      <select
+                        v-model="detalle.jugador_id"
+                        class="w-full rounded-lg border border-notion-border px-3 py-2 text-sm text-notion-text focus:outline-none focus:ring-2 focus:ring-primary"
+                      >
+                        <option value="">Selecciona jugador</option>
+                        <option v-for="j in jugadoresVisitante" :key="j.id" :value="j.id">
+                          {{ j.nombre }}{{ j.numero_camiseta ? ` #${j.numero_camiseta}` : "" }}
+                        </option>
+                      </select>
+                    </div>
+                    <div>
+                      <label class="mb-1 block text-xs text-notion-muted">Goles</label>
+                      <input
+                        v-model.number="detalle.goles"
+                        type="number"
+                        min="0"
+                        class="w-full rounded-lg border border-notion-border px-3 py-2 text-sm text-notion-text focus:outline-none focus:ring-2 focus:ring-primary"
+                      />
+                    </div>
+                    <div>
+                      <label class="mb-1 block text-xs text-notion-muted">Asistencias</label>
+                      <input
+                        v-model.number="detalle.asistencias"
+                        type="number"
+                        min="0"
+                        class="w-full rounded-lg border border-notion-border px-3 py-2 text-sm text-notion-text focus:outline-none focus:ring-2 focus:ring-primary"
+                      />
+                    </div>
+                    <div class="flex items-end">
+                      <button
+                        type="button"
+                        class="h-10 w-10 rounded-lg border border-notion-border text-notion-muted transition-colors hover:bg-notion-bg hover:text-notion-text disabled:cursor-not-allowed disabled:opacity-40"
+                        :disabled="detalleJugadoresVisitante.length === 1"
+                        @click="removeDetalleRow('visitante', idx)"
+                      >
+                        ×
+                      </button>
                     </div>
                   </div>
+                </div>
+
+                <div class="flex items-center justify-between gap-3">
+                  <p class="text-xs text-notion-muted">
+                    {{ getDetalleSummary(detalleJugadoresVisitante).asistencias }} asistencias registradas
+                  </p>
+                  <button
+                    type="button"
+                    class="rounded-lg border border-notion-border px-3 py-2 text-sm font-medium text-notion-text transition-colors hover:bg-white"
+                    @click="addDetalleRow('visitante')"
+                  >
+                    Añadir jugador
+                  </button>
                 </div>
               </div>
             </div>
 
-            <!-- Fecha e información básica -->
             <div class="space-y-4">
               <div>
-                <label class="block text-sm font-medium text-notion-text mb-2">
+                <label class="mb-2 block text-sm font-medium text-notion-text">
                   Fecha <span class="text-red-500">*</span>
                 </label>
                 <input
@@ -614,9 +820,7 @@ const closePanel = () => {
 
               <div class="grid grid-cols-2 gap-3">
                 <div>
-                  <label class="block text-sm font-medium text-notion-text mb-2">
-                    Hora inicio
-                  </label>
+                  <label class="mb-2 block text-sm font-medium text-notion-text">Hora inicio</label>
                   <input
                     v-model="form.hora_inicio"
                     type="time"
@@ -624,9 +828,7 @@ const closePanel = () => {
                   />
                 </div>
                 <div>
-                  <label class="block text-sm font-medium text-notion-text mb-2">
-                    Hora fin
-                  </label>
+                  <label class="mb-2 block text-sm font-medium text-notion-text">Hora fin</label>
                   <input
                     v-model="form.hora_fin"
                     type="time"
@@ -636,9 +838,7 @@ const closePanel = () => {
               </div>
 
               <div>
-                <label class="block text-sm font-medium text-notion-text mb-2">
-                  Lugar
-                </label>
+                <label class="mb-2 block text-sm font-medium text-notion-text">Lugar</label>
                 <div class="flex gap-2">
                   <input
                     v-model="form.lugar"
@@ -648,7 +848,7 @@ const closePanel = () => {
                   />
                   <button
                     type="button"
-                    class="rounded-lg bg-primary px-3 py-2 text-sm font-medium text-white hover:bg-primary-600 transition-colors"
+                    class="rounded-lg bg-primary px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-600"
                     @click="updateMap"
                   >
                     Ver mapa
@@ -657,10 +857,11 @@ const closePanel = () => {
 
                 <div
                   v-if="selectedMapUrl"
-                  class="w-full h-36 rounded-lg overflow-hidden border border-notion-border mt-2"
+                  class="mt-2 h-36 w-full overflow-hidden rounded-lg border border-notion-border"
                 >
                   <iframe
                     :src="selectedMapUrl"
+                    class="h-full w-full"
                     style="border: 0"
                     allowfullscreen=""
                     loading="lazy"
@@ -670,9 +871,7 @@ const closePanel = () => {
               </div>
 
               <div>
-                <label class="block text-sm font-medium text-notion-text mb-2">
-                  Árbitro
-                </label>
+                <label class="mb-2 block text-sm font-medium text-notion-text">Árbitro</label>
                 <input
                   v-model="form.arbitro"
                   type="text"
@@ -682,9 +881,7 @@ const closePanel = () => {
               </div>
 
               <div>
-                <label class="block text-sm font-medium text-notion-text mb-2">
-                  Redactado por
-                </label>
+                <label class="mb-2 block text-sm font-medium text-notion-text">Redactado por</label>
                 <input
                   v-model="form.redactado_por"
                   type="text"
@@ -694,47 +891,44 @@ const closePanel = () => {
               </div>
 
               <div>
-                <label class="block text-sm font-medium text-notion-text mb-2">
-                  Observaciones
-                </label>
+                <label class="mb-2 block text-sm font-medium text-notion-text">Observaciones</label>
                 <textarea
                   v-model="form.observaciones"
-                  placeholder="Notas adicionales..."
                   rows="3"
-                  class="w-full rounded-lg border border-notion-border px-3 py-2 text-sm text-notion-text placeholder-notion-muted focus:outline-none focus:ring-2 focus:ring-primary resize-none"
+                  placeholder="Notas adicionales..."
+                  class="w-full resize-none rounded-lg border border-notion-border px-3 py-2 text-sm text-notion-text placeholder-notion-muted focus:outline-none focus:ring-2 focus:ring-primary"
                 ></textarea>
               </div>
             </div>
 
-            <!-- Tarjetas de jugadores -->
             <div v-if="equipoLocalSeleccionado || equipoVisitanteSeleccionado" class="space-y-4">
-              <p class="text-xs font-medium text-notion-muted uppercase tracking-wide">Tarjetas</p>
+              <p class="text-xs font-medium uppercase tracking-wide text-notion-muted">Tarjetas</p>
 
               <div v-if="equipoLocalSeleccionado && jugadoresLocal.length">
-                <p class="text-sm font-medium text-notion-text mb-2">{{ equipoLocalSeleccionado.nombre }}</p>
-                <div class="space-y-1.5 max-h-48 overflow-y-auto rounded-lg bg-notion-bg/50 p-3">
+                <p class="mb-2 text-sm font-medium text-notion-text">
+                  {{ equipoLocalSeleccionado.nombre }}
+                </p>
+                <div class="max-h-48 space-y-1.5 overflow-y-auto rounded-lg bg-notion-bg/50 p-3">
                   <div
                     v-for="(jugador, idx) in jugadoresLocal"
                     :key="jugador.id"
-                    class="flex items-center gap-2 p-2 rounded bg-white border border-notion-border"
+                    class="flex items-center gap-2 rounded border border-notion-border bg-white p-2"
                   >
-                    <span class="text-xs text-notion-muted flex-1 truncate">{{ jugador.nombre }}</span>
+                    <span class="flex-1 truncate text-xs text-notion-muted">{{ jugador.nombre }}</span>
                     <div class="flex items-center gap-1">
                       <input
                         v-model.number="statsLocal[idx].tarjetas_amarillas"
                         type="number"
                         min="0"
-                        placeholder="🟨"
                         title="Tarjetas amarillas"
-                        class="w-10 rounded px-1 py-1 text-xs border border-notion-border focus:outline-none focus:ring-2 focus:ring-primary text-center"
+                        class="w-10 rounded border border-notion-border px-1 py-1 text-center text-xs focus:outline-none focus:ring-2 focus:ring-primary"
                       />
                       <input
                         v-model.number="statsLocal[idx].tarjetas_rojas"
                         type="number"
                         min="0"
-                        placeholder="🟥"
                         title="Tarjetas rojas"
-                        class="w-10 rounded px-1 py-1 text-xs border border-notion-border focus:outline-none focus:ring-2 focus:ring-primary text-center"
+                        class="w-10 rounded border border-notion-border px-1 py-1 text-center text-xs focus:outline-none focus:ring-2 focus:ring-primary"
                       />
                     </div>
                   </div>
@@ -742,30 +936,30 @@ const closePanel = () => {
               </div>
 
               <div v-if="equipoVisitanteSeleccionado && jugadoresVisitante.length">
-                <p class="text-sm font-medium text-notion-text mb-2">{{ equipoVisitanteSeleccionado.nombre }}</p>
-                <div class="space-y-1.5 max-h-48 overflow-y-auto rounded-lg bg-notion-bg/50 p-3">
+                <p class="mb-2 text-sm font-medium text-notion-text">
+                  {{ equipoVisitanteSeleccionado.nombre }}
+                </p>
+                <div class="max-h-48 space-y-1.5 overflow-y-auto rounded-lg bg-notion-bg/50 p-3">
                   <div
                     v-for="(jugador, idx) in jugadoresVisitante"
                     :key="jugador.id"
-                    class="flex items-center gap-2 p-2 rounded bg-white border border-notion-border"
+                    class="flex items-center gap-2 rounded border border-notion-border bg-white p-2"
                   >
-                    <span class="text-xs text-notion-muted flex-1 truncate">{{ jugador.nombre }}</span>
+                    <span class="flex-1 truncate text-xs text-notion-muted">{{ jugador.nombre }}</span>
                     <div class="flex items-center gap-1">
                       <input
                         v-model.number="statsVisitante[idx].tarjetas_amarillas"
                         type="number"
                         min="0"
-                        placeholder="🟨"
                         title="Tarjetas amarillas"
-                        class="w-10 rounded px-1 py-1 text-xs border border-notion-border focus:outline-none focus:ring-2 focus:ring-primary text-center"
+                        class="w-10 rounded border border-notion-border px-1 py-1 text-center text-xs focus:outline-none focus:ring-2 focus:ring-primary"
                       />
                       <input
                         v-model.number="statsVisitante[idx].tarjetas_rojas"
                         type="number"
                         min="0"
-                        placeholder="🟥"
                         title="Tarjetas rojas"
-                        class="w-10 rounded px-1 py-1 text-xs border border-notion-border focus:outline-none focus:ring-2 focus:ring-primary text-center"
+                        class="w-10 rounded border border-notion-border px-1 py-1 text-center text-xs focus:outline-none focus:ring-2 focus:ring-primary"
                       />
                     </div>
                   </div>
@@ -773,7 +967,6 @@ const closePanel = () => {
               </div>
             </div>
 
-            <!-- Confirmación -->
             <div class="flex items-center gap-2">
               <input
                 id="confirmado"
@@ -786,18 +979,16 @@ const closePanel = () => {
               </label>
             </div>
 
-            <!-- Feedback de error -->
             <div
               v-if="saveError"
-              class="rounded-lg bg-red-50 border border-red-200 px-3 py-2.5 text-xs text-red-700"
+              class="rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-xs text-red-700"
             >
               {{ saveError }}
             </div>
 
-            <!-- Feedback de éxito -->
             <div
               v-if="saveSuccess"
-              class="rounded-lg bg-green-50 border border-green-200 px-3 py-2.5 text-xs text-green-700 flex items-center gap-2"
+              class="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2.5 text-xs text-green-700"
             >
               <svg
                 class="h-4 w-4"
@@ -807,7 +998,7 @@ const closePanel = () => {
               >
                 <path
                   fill-rule="evenodd"
-                  d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                  d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16Zm3.707-9.293a1 1 0 0 0-1.414-1.414L9 10.586 7.707 9.293a1 1 0 0 0-1.414 1.414l2 2a1 1 0 0 0 1.414 0l4-4Z"
                   clip-rule="evenodd"
                 />
               </svg>
@@ -816,24 +1007,23 @@ const closePanel = () => {
           </form>
         </div>
 
-        <!-- Footer -->
-        <div class="border-t border-notion-border bg-white px-4 py-4 sm:px-6 flex gap-2">
+        <div class="flex gap-2 border-t border-notion-border bg-white px-4 py-4 sm:px-6">
           <button
             type="button"
-            class="flex-1 rounded-lg border border-notion-border px-4 py-2 text-sm font-medium text-notion-text hover:bg-notion-bg transition-colors"
+            class="flex-1 rounded-lg border border-notion-border px-4 py-2 text-sm font-medium text-notion-text transition-colors hover:bg-notion-bg"
             @click="closePanel"
           >
             Cancelar
           </button>
           <button
             type="button"
-            class="flex-1 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            class="flex flex-1 items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-50"
             :disabled="saving || !form.confirmado"
             @click="handleSave"
           >
             <svg
               v-if="saving"
-              class="animate-spin h-4 w-4"
+              class="h-4 w-4 animate-spin"
               xmlns="http://www.w3.org/2000/svg"
               fill="none"
               viewBox="0 0 24 24"
@@ -849,10 +1039,10 @@ const closePanel = () => {
               <path
                 class="opacity-75"
                 fill="currentColor"
-                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                d="M4 12a8 8 0 0 1 8-8V0C5.373 0 0 5.373 0 12h4Zm2 5.291A7.962 7.962 0 0 1 4 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647Z"
               ></path>
             </svg>
-            {{ saving ? "Guardando…" : "Guardar resultado" }}
+            {{ saving ? "Guardando..." : "Guardar resultado" }}
           </button>
         </div>
       </div>
