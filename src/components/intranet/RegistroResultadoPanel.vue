@@ -330,6 +330,14 @@ function getDetalleSummary(rows = []) {
   );
 }
 
+function hasIncompleteDetalleRows(rows = []) {
+  return rows.some((row) => {
+    const goles = Number(row.goles) || 0;
+    const asistencias = Number(row.asistencias) || 0;
+    return (goles > 0 || asistencias > 0) && !row.jugador_id;
+  });
+}
+
 const handleSave = async () => {
   saveError.value = "";
   saveSuccess.value = false;
@@ -362,6 +370,18 @@ const handleSave = async () => {
     totalGolesDetalleVisitante.value !== Number(form.value.goles_visitante)
   ) {
     saveError.value = "Los goles asignados al equipo visitante deben coincidir con el marcador.";
+    return;
+  }
+
+  if (hasIncompleteDetalleRows(detalleJugadoresLocal.value)) {
+    saveError.value =
+      "Selecciona un jugador en cada fila del equipo local que tenga goles o asistencias.";
+    return;
+  }
+
+  if (hasIncompleteDetalleRows(detalleJugadoresVisitante.value)) {
+    saveError.value =
+      "Selecciona un jugador en cada fila del equipo visitante que tenga goles o asistencias.";
     return;
   }
 
@@ -451,10 +471,17 @@ const handleSave = async () => {
       (stat) => stat.goles || stat.asistencias || stat.tarjetas_amarillas || stat.tarjetas_rojas
     );
 
+    const { error: deleteStatsError } = await supabase
+      .from("estadisticas_partido_jugador")
+      .delete()
+      .eq("partido_id", partidoId);
+
+    if (deleteStatsError) throw deleteStatsError;
+
     if (allStats.length > 0) {
       const { error: statsError } = await supabase
         .from("estadisticas_partido_jugador")
-        .insert(allStats);
+        .upsert(allStats, { onConflict: "partido_id,jugador_id" });
 
       if (statsError) throw statsError;
     }

@@ -11,7 +11,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 -- Perfiles de usuario con roles
 -- =============================================
 CREATE TABLE IF NOT EXISTS profiles (
-  id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   nombre TEXT NOT NULL,
   rol TEXT NOT NULL DEFAULT 'jugador' CHECK (rol IN ('admin', 'capitan', 'jugador')),
   equipo_id UUID, -- Se agregará FK después de crear equipos
