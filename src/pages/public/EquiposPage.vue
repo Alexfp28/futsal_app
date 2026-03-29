@@ -30,7 +30,13 @@ const loadEquipos = async () => {
   try {
     const { data, err } = await supabase
       .from("equipos")
-      .select("*, profiles!equipos_capitan_id_fkey(nombre)")
+      .select(
+        `
+        *,
+        capitan:profiles!equipos_capitan_id_fkey(nombre),
+        jugadores:profiles!profiles_equipo_id_fkey(id)
+      `,
+      )
       .order("nombre");
 
     if (err) throw err;
@@ -169,7 +175,7 @@ const equiposEjemplo = [
           >
             <span class="text-sm font-bold text-primary">
               {{
-                equipo.jugadores_count || equipo.profiles?.length || 0
+                equipo.jugadores_count ?? equipo.jugadores?.length ?? 0
               }}
               jugadores
             </span>
@@ -191,9 +197,7 @@ const equiposEjemplo = [
             <span class="truncate">
               Capitán:
               {{
-                equipo.capitan?.nombre ||
-                equipo.profiles?.[0]?.nombre ||
-                "Sin asignar"
+                equipo.capitan?.nombre || "Sin asignar"
               }}
             </span>
           </div>
