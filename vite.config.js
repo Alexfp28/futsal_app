@@ -10,4 +10,35 @@ export default defineConfig({
       "@": fileURLToPath(new URL("./src", import.meta.url)),
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes("node_modules")) return;
+
+          if (id.includes("chart.js") || id.includes("vue-chartjs")) {
+            return "charts";
+          }
+
+          if (id.includes("@vue-flow/core")) {
+            return "vue-flow";
+          }
+
+          if (id.includes("@supabase")) {
+            return "supabase";
+          }
+
+          if (id.includes("vue-router") || id.includes("pinia")) {
+            return "router-store";
+          }
+
+          if (id.includes("@heroicons") || id.includes("@headlessui")) {
+            return "ui";
+          }
+
+          return "vendor";
+        },
+      },
+    },
+  },
 });

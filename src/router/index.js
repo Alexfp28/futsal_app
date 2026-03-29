@@ -2,37 +2,39 @@ import { createRouter, createWebHistory } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
 
 // Páginas públicas
-import IdentidadPage from "@/pages/public/IdentidadPage.vue";
-import EquiposPage from "@/pages/public/EquiposPage.vue";
-import JugadoresLibresPage from "@/pages/public/JugadoresLibresPage.vue";
-import ReglamentoPage from "@/pages/public/ReglamentoPage.vue";
-import CodigoConductaPage from "@/pages/public/CodigoConductaPage.vue";
-import EconomiaPage from "@/pages/public/EconomiaPage.vue";
-import CalendarioPage from "@/pages/public/CalendarioPage.vue";
-import RankingsPage from "@/pages/public/RankingsPage.vue";
-import PalmaresPage from "@/pages/public/PalmaresPage.vue";
-import SugerenciasPage from "@/pages/public/SugerenciasPage.vue";
-import TraspasosPage from "@/pages/public/TraspasosPage.vue";
-import InvitacionesPage from "@/pages/public/InvitacionesPage.vue";
+const IdentidadPage = () => import("@/pages/public/IdentidadPage.vue");
+const EquiposPage = () => import("@/pages/public/EquiposPage.vue");
+const JugadoresLibresPage = () =>
+  import("@/pages/public/JugadoresLibresPage.vue");
+const ReglamentoPage = () => import("@/pages/public/ReglamentoPage.vue");
+const CodigoConductaPage = () =>
+  import("@/pages/public/CodigoConductaPage.vue");
+const EconomiaPage = () => import("@/pages/public/EconomiaPage.vue");
+const CalendarioPage = () => import("@/pages/public/CalendarioPage.vue");
+const RankingsPage = () => import("@/pages/public/RankingsPage.vue");
+const PalmaresPage = () => import("@/pages/public/PalmaresPage.vue");
+const SugerenciasPage = () => import("@/pages/public/SugerenciasPage.vue");
+const TraspasosPage = () => import("@/pages/public/TraspasosPage.vue");
+const InvitacionesPage = () => import("@/pages/public/InvitacionesPage.vue");
 
 // Páginas de autenticación
-import LoginPage from "@/pages/auth/LoginPage.vue";
-import RegisterPage from "@/pages/auth/RegisterPage.vue";
+const LoginPage = () => import("@/pages/auth/LoginPage.vue");
+const RegisterPage = () => import("@/pages/auth/RegisterPage.vue");
 
 // Páginas de administrador
-import AdminDashboard from "@/pages/admin/AdminDashboard.vue";
-import AdminEquipos from "@/pages/admin/AdminEquipos.vue";
-import AdminJugadores from "@/pages/admin/AdminJugadores.vue";
-import AdminPartidos from "@/pages/admin/AdminPartidos.vue";
-import AdminGastos from "@/pages/admin/AdminGastos.vue";
+const AdminDashboard = () => import("@/pages/admin/AdminDashboard.vue");
+const AdminEquipos = () => import("@/pages/admin/AdminEquipos.vue");
+const AdminJugadores = () => import("@/pages/admin/AdminJugadores.vue");
+const AdminPartidos = () => import("@/pages/admin/AdminPartidos.vue");
+const AdminGastos = () => import("@/pages/admin/AdminGastos.vue");
 
 // Páginas de capitán
-import CapitanDashboard from "@/pages/capitan/CapitanDashboard.vue";
-import CapitanEquipo from "@/pages/capitan/CapitanEquipo.vue";
+const CapitanDashboard = () => import("@/pages/capitan/CapitanDashboard.vue");
+const CapitanEquipo = () => import("@/pages/capitan/CapitanEquipo.vue");
 
 // Páginas de jugador
-import JugadorPerfil from "@/pages/jugador/JugadorPerfil.vue";
-import IntranetPage from "@/pages/intranet/IntranetPage.vue";
+const JugadorPerfil = () => import("@/pages/jugador/JugadorPerfil.vue");
+const IntranetPage = () => import("@/pages/intranet/IntranetPage.vue");
 
 const routes = [
   // Rutas públicas
