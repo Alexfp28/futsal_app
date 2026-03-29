@@ -18,6 +18,7 @@ const error = ref(null);
 const filtroRol = ref("");
 const filtroLibre = ref("");
 const saving = ref(false);
+const updatingPlayerId = ref(null);
 const formError = ref("");
 const showCreateModal = ref(false);
 
@@ -214,6 +215,49 @@ const updateRol = async (jugador, nuevoRol) => {
   }
 };
 
+const updateEquipo = async (jugador, nuevoEquipoId) => {
+  const equipoId = nuevoEquipoId || null;
+  const previousEquipoId = jugador.equipo_id || "";
+  const previousEquipoNombre = jugador.equipos?.nombre || null;
+  const previousLibre = jugador.libre;
+
+  updatingPlayerId.value = jugador.id;
+
+  try {
+    const { error: updateError } = await supabase
+      .from("profiles")
+      .update({
+        equipo_id: equipoId,
+        libre: !equipoId,
+      })
+      .eq("id", jugador.id);
+
+    if (updateError) throw updateError;
+
+    const { error: plantillaError } = await supabase
+      .from("plantilla")
+      .delete()
+      .eq("jugador_id", jugador.id)
+      .neq("equipo_id", equipoId || "00000000-0000-0000-0000-000000000000");
+
+    if (plantillaError) throw plantillaError;
+
+    const equipoSeleccionado = equipos.value.find((equipo) => equipo.id === equipoId);
+    jugador.equipo_id = equipoId;
+    jugador.libre = !equipoId;
+    jugador.equipos = equipoSeleccionado
+      ? { nombre: equipoSeleccionado.nombre }
+      : null;
+  } catch (e) {
+    console.error("Error al actualizar equipo:", e);
+    jugador.equipo_id = previousEquipoId || null;
+    jugador.libre = previousLibre;
+    jugador.equipos = previousEquipoNombre ? { nombre: previousEquipoNombre } : null;
+  } finally {
+    updatingPlayerId.value = null;
+  }
+};
+
 const confirmDeleteJugador = (jugador) => {
   jugadorToDelete.value = jugador;
   showDeleteDialog.value = true;
@@ -321,7 +365,10 @@ const handleDeleteCancel = () => {
                 Rol
               </th>
               <th class="text-left py-4 px-6 text-sm font-medium text-notion-muted">
-                Equipo
+                Equipo actual
+              </th>
+              <th class="text-left py-4 px-6 text-sm font-medium text-notion-muted">
+                Asignar equipo
               </th>
               <th class="text-left py-4 px-6 text-sm font-medium text-notion-muted">
                 Estado
@@ -365,6 +412,21 @@ const handleDeleteCancel = () => {
                 {{ jugador.equipos?.nombre || "-" }}
               </td>
               <td class="py-4 px-6">
+                <div class="min-w-[220px]">
+                  <select
+                    :value="jugador.equipo_id || ''"
+                    @change="updateEquipo(jugador, $event.target.value)"
+                    :disabled="updatingPlayerId === jugador.id"
+                    class="input text-sm py-2"
+                  >
+                    <option value="">Sin equipo</option>
+                    <option v-for="equipo in equipos" :key="equipo.id" :value="equipo.id">
+                      {{ equipo.nombre }}
+                    </option>
+                  </select>
+                </div>
+              </td>
+              <td class="py-4 px-6">
                 <span v-if="jugador.libre" class="badge badge-warning">Libre</span>
                 <span v-else class="badge badge-success">En equipo</span>
               </td>
@@ -381,7 +443,7 @@ const handleDeleteCancel = () => {
               </td>
             </tr>
             <tr v-if="jugadoresFiltrados().length === 0">
-              <td colspan="6" class="py-12 text-center text-notion-muted text-sm">
+              <td colspan="7" class="py-12 text-center text-notion-muted text-sm">
                 No hay jugadores que coincidan con los filtros actuales.
               </td>
             </tr>
