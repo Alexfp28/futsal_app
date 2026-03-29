@@ -3,10 +3,11 @@ import { ref, onMounted } from "vue";
 import { supabase } from "@/lib/supabase";
 import { useRouteRefresh } from "@/composables/useRouteRefresh";
 import {
-  PlusIcon,
   TrashIcon,
   UserIcon,
+  PencilIcon,
   XMarkIcon,
+  MagnifyingGlassIcon,
   ExclamationTriangleIcon,
 } from "@heroicons/vue/24/outline";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
@@ -17,14 +18,15 @@ const loading = ref(true);
 const error = ref(null);
 const filtroRol = ref("");
 const filtroLibre = ref("");
-const saving = ref(false);
+const filtroBusqueda = ref("");
 const updatingPlayerId = ref(null);
-const formError = ref("");
-const showCreateModal = ref(false);
+const savingEdit = ref(false);
 
-const form = ref({
+const showEditModal = ref(false);
+const jugadorToEdit = ref(null);
+const editError = ref("");
+const editForm = ref({
   nombre: "",
-  equipo_id: "",
   posicion: "",
   numero_camiseta: "",
 });
@@ -98,28 +100,30 @@ useRouteRefresh(async () => {
   await Promise.all([loadJugadores(), loadEquipos()]);
 });
 
-const resetForm = () => {
-  form.value = {
-    nombre: "",
-    equipo_id: "",
-    posicion: "",
-    numero_camiseta: "",
-  };
-  formError.value = "";
-};
-
-const openCreateModal = () => {
-  resetForm();
-  showCreateModal.value = true;
-};
-
-const closeCreateModal = () => {
-  showCreateModal.value = false;
-  resetForm();
-};
-
 const jugadoresFiltrados = () => {
   let result = jugadores.value;
+
+  const busqueda = filtroBusqueda.value.trim().toLowerCase();
+
+  if (busqueda) {
+    result = result.filter((jugador) => {
+      const numero = jugador.numero_camiseta != null ? String(jugador.numero_camiseta) : "";
+      const equipoActual = jugador.equipos?.nombre || "";
+      const estado = jugador.libre ? "libre en equipo sin equipo" : "en equipo ocupado";
+      const searchableFields = [
+        jugador.nombre || "",
+        jugador.posicion || "",
+        jugador.rol || "",
+        numero,
+        equipoActual,
+        estado,
+      ];
+
+      return searchableFields.some((value) =>
+        value.toLowerCase().includes(busqueda),
+      );
+    });
+  }
 
   if (filtroRol.value) {
     result = result.filter((j) => j.rol === filtroRol.value);
@@ -133,79 +137,6 @@ const jugadoresFiltrados = () => {
 
   return result;
 };
-
-const createJugador = async () => {
-  formError.value = "";
-
-  const nombre = form.value.nombre.trim();
-  const equipoId = form.value.equipo_id;
-  const numeroCamiseta =
-    form.value.numero_camiseta === "" ? null : Number(form.value.numero_camiseta);
-
-  if (!nombre) {
-    formError.value = "El nombre del jugador es obligatorio.";
-    return;
-  }
-
-  if (!equipoId) {
-    formError.value = "Debes asignar un equipo al jugador.";
-    return;
-  }
-
-  if (
-    numeroCamiseta !== null &&
-    (!Number.isInteger(numeroCamiseta) || numeroCamiseta < 0)
-  ) {
-    formError.value = "El numero de camiseta debe ser un entero valido.";
-    return;
-  }
-
-  saving.value = true;
-
-  try {
-    const payload = {
-      id: crypto.randomUUID(),
-      nombre,
-      rol: "jugador",
-      equipo_id: equipoId,
-      posicion: form.value.posicion || null,
-      numero_camiseta: numeroCamiseta,
-      libre: false,
-    };
-
-    const { data, error: insertError } = await supabase
-      .from("profiles")
-      .insert(payload)
-      .select(
-        `
-        id,
-        nombre,
-        rol,
-        posicion,
-        numero_camiseta,
-        libre,
-        equipo_id,
-        equipos:equipos!profiles_equipo_id_fkey (id, nombre)
-      `,
-      )
-      .single();
-
-    if (insertError) throw insertError;
-
-    jugadores.value = [...jugadores.value, normalizeJugador(data)].sort((a, b) =>
-      a.nombre.localeCompare(b.nombre, "es"),
-    );
-    closeCreateModal();
-  } catch (e) {
-    console.error("Error al crear jugador:", e);
-    formError.value =
-      e?.message ||
-      "No se pudo crear el jugador. Revisa la migracion SQL de perfiles sin cuenta y vuelve a intentarlo.";
-  } finally {
-    saving.value = false;
-  }
-};
-
 const updateRol = async (jugador, nuevoRol) => {
   try {
     await supabase.from("profiles").update({ rol: nuevoRol }).eq("id", jugador.id);
@@ -258,6 +189,102 @@ const updateEquipo = async (jugador, nuevoEquipoId) => {
   }
 };
 
+const openEditModal = (jugador) => {
+  jugadorToEdit.value = jugador;
+  editError.value = "";
+  editForm.value = {
+    nombre: jugador.nombre || "",
+    posicion: jugador.posicion || "",
+    numero_camiseta: jugador.numero_camiseta ?? "",
+  };
+  showEditModal.value = true;
+};
+
+const closeEditModal = () => {
+  if (savingEdit.value) return;
+
+  showEditModal.value = false;
+  jugadorToEdit.value = null;
+  editError.value = "";
+  editForm.value = {
+    nombre: "",
+    posicion: "",
+    numero_camiseta: "",
+  };
+};
+
+const saveJugadorEdit = async () => {
+  if (!jugadorToEdit.value || savingEdit.value) return;
+
+  const nombre = editForm.value.nombre.trim();
+  const numeroValue = editForm.value.numero_camiseta;
+  const numeroCamiseta =
+    numeroValue === "" || numeroValue === null
+      ? null
+      : parseInt(numeroValue, 10);
+
+  if (!nombre) {
+    editError.value = "El nombre y apellidos son obligatorios.";
+    return;
+  }
+
+  if (numeroValue !== "" && Number.isNaN(numeroCamiseta)) {
+    editError.value = "El numero debe ser un valor valido.";
+    return;
+  }
+
+  savingEdit.value = true;
+  editError.value = "";
+
+  try {
+    const updates = {
+      nombre,
+      posicion: editForm.value.posicion || null,
+      numero_camiseta: numeroCamiseta,
+    };
+
+    const { data, error: updateError } = await supabase
+      .from("profiles")
+      .update(updates)
+      .eq("id", jugadorToEdit.value.id)
+      .select(
+        `
+        id,
+        nombre,
+        rol,
+        posicion,
+        numero_camiseta,
+        libre,
+        equipo_id,
+        equipos:equipos!profiles_equipo_id_fkey (id, nombre)
+      `,
+      )
+      .single();
+
+    if (updateError) throw updateError;
+
+    const jugadorActualizado = normalizeJugador(data);
+    jugadores.value = jugadores.value.map((jugador) =>
+      jugador.id === jugadorActualizado.id ? jugadorActualizado : jugador,
+    );
+
+    showEditModal.value = false;
+    jugadorToEdit.value = null;
+    editError.value = "";
+    editForm.value = {
+      nombre: "",
+      posicion: "",
+      numero_camiseta: "",
+    };
+  } catch (e) {
+    console.error("Error al guardar jugador:", e);
+    editError.value =
+      "No se pudo guardar la informacion personal del jugador.";
+  } finally {
+    savingEdit.value = false;
+  }
+};
+
 const confirmDeleteJugador = (jugador) => {
   jugadorToDelete.value = jugador;
   showDeleteDialog.value = true;
@@ -279,6 +306,10 @@ const handleDeleteConfirm = async () => {
     );
   } catch (e) {
     console.error("Error al eliminar:", e);
+    alert(
+      e?.message ||
+        "No se pudo eliminar el jugador. Revisa las politicas de Supabase para profiles.",
+    );
   } finally {
     showDeleteDialog.value = false;
     jugadorToDelete.value = null;
@@ -292,24 +323,43 @@ const handleDeleteCancel = () => {
 </script>
 
 <template>
-  <div class="page-container">
-    <div class="flex items-start justify-between gap-4 mb-8">
+  <div class="page-container max-w-[96rem]">
+    <div class="mb-8">
       <div>
         <h1 class="page-title">Gestionar Jugadores</h1>
         <p class="page-subtitle">
-          Administra todos los jugadores registrados y da de alta nuevos perfiles.
+          Administra los jugadores registrados que ya han accedido a la plataforma.
         </p>
       </div>
-      <button
-        @click="openCreateModal"
-        class="btn-primary flex items-center gap-2 whitespace-nowrap"
-      >
-        <PlusIcon class="w-5 h-5" />
-        <span>Nuevo jugador</span>
-      </button>
     </div>
 
     <div class="flex flex-wrap gap-4 mb-6">
+      <div class="min-w-[260px] flex-1">
+        <label class="block text-sm font-medium text-notion-text mb-2">
+          Buscar
+        </label>
+        <div class="relative">
+          <MagnifyingGlassIcon
+            class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-notion-muted"
+          />
+          <input
+            v-model="filtroBusqueda"
+            type="text"
+            class="input w-full pl-10 pr-10"
+            placeholder="Nombre, posicion, rol, equipo, numero o estado"
+          />
+          <button
+            v-if="filtroBusqueda"
+            type="button"
+            class="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-1 text-notion-muted transition-colors hover:bg-notion-bg hover:text-notion-text"
+            @click="filtroBusqueda = ''"
+            aria-label="Limpiar busqueda"
+            title="Limpiar busqueda"
+          >
+            <XMarkIcon class="h-4 w-4" />
+          </button>
+        </div>
+      </div>
       <div>
         <label class="block text-sm font-medium text-notion-text mb-2">Rol</label>
         <select v-model="filtroRol" class="input min-w-[150px]">
@@ -352,28 +402,28 @@ const handleDeleteCancel = () => {
 
     <div v-else class="card overflow-hidden">
       <div class="overflow-x-auto">
-        <table class="w-full">
+        <table class="w-full min-w-[1280px] table-fixed">
           <thead class="bg-notion-bg">
             <tr>
-              <th class="text-left py-4 px-6 text-sm font-medium text-notion-muted">
+              <th class="w-[24%] text-left py-4 px-4 text-sm font-medium text-notion-muted">
                 Jugador
               </th>
-              <th class="text-left py-4 px-6 text-sm font-medium text-notion-muted">
+              <th class="w-[12%] text-left py-4 px-4 text-sm font-medium text-notion-muted">
                 Posicion
               </th>
-              <th class="text-left py-4 px-6 text-sm font-medium text-notion-muted">
+              <th class="w-[12%] text-left py-4 px-4 text-sm font-medium text-notion-muted">
                 Rol
               </th>
-              <th class="text-left py-4 px-6 text-sm font-medium text-notion-muted">
+              <th class="w-[16%] text-left py-4 px-4 text-sm font-medium text-notion-muted">
                 Equipo actual
               </th>
-              <th class="text-left py-4 px-6 text-sm font-medium text-notion-muted">
+              <th class="w-[20%] text-left py-4 px-4 text-sm font-medium text-notion-muted">
                 Asignar equipo
               </th>
-              <th class="text-left py-4 px-6 text-sm font-medium text-notion-muted">
+              <th class="w-[8%] text-left py-4 px-4 text-sm font-medium text-notion-muted">
                 Estado
               </th>
-              <th class="text-right py-4 px-6 text-sm font-medium text-notion-muted">
+              <th class="w-[8%] text-right py-4 px-4 text-sm font-medium text-notion-muted">
                 Acciones
               </th>
             </tr>
@@ -384,40 +434,40 @@ const handleDeleteCancel = () => {
               :key="jugador.id"
               class="border-t border-notion-border hover:bg-notion-bg transition-colors"
             >
-              <td class="py-4 px-6">
-                <div class="flex items-center space-x-3">
+              <td class="py-4 px-4">
+                <div class="flex items-center space-x-3 min-w-0">
                   <div
-                    class="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center"
+                    class="h-10 w-10 flex-shrink-0 rounded-full bg-primary/10 flex items-center justify-center"
                   >
                     <UserIcon class="w-5 h-5 text-primary" />
                   </div>
-                  <span class="font-medium text-notion-text">{{ jugador.nombre }}</span>
+                  <span class="truncate font-medium text-notion-text">{{ jugador.nombre }}</span>
                 </div>
               </td>
-              <td class="py-4 px-6 text-sm text-notion-muted">
-                {{ jugador.posicion || "-" }}
+              <td class="py-4 px-4 text-sm text-notion-muted">
+                <span class="block truncate">{{ jugador.posicion || "-" }}</span>
               </td>
-              <td class="py-4 px-6">
+              <td class="py-4 px-4">
                 <select
                   :value="jugador.rol"
                   @change="updateRol(jugador, $event.target.value)"
-                  class="text-sm border border-notion-border rounded-lg px-2 py-1"
+                  class="w-full text-sm border border-notion-border rounded-lg px-2 py-1"
                 >
                   <option v-for="rol in roles" :key="rol" :value="rol">
                     {{ rol }}
                   </option>
                 </select>
               </td>
-              <td class="py-4 px-6 text-sm text-notion-muted">
-                {{ jugador.equipos?.nombre || "-" }}
+              <td class="py-4 px-4 text-sm text-notion-muted">
+                <span class="block truncate">{{ jugador.equipos?.nombre || "-" }}</span>
               </td>
-              <td class="py-4 px-6">
-                <div class="min-w-[220px]">
+              <td class="py-4 px-4">
+                <div class="w-full">
                   <select
                     :value="jugador.equipo_id || ''"
                     @change="updateEquipo(jugador, $event.target.value)"
                     :disabled="updatingPlayerId === jugador.id"
-                    class="input text-sm py-2"
+                    class="input w-full text-sm py-2"
                   >
                     <option value="">Sin equipo</option>
                     <option v-for="equipo in equipos" :key="equipo.id" :value="equipo.id">
@@ -426,12 +476,19 @@ const handleDeleteCancel = () => {
                   </select>
                 </div>
               </td>
-              <td class="py-4 px-6">
+              <td class="py-4 px-4">
                 <span v-if="jugador.libre" class="badge badge-warning">Libre</span>
                 <span v-else class="badge badge-success">En equipo</span>
               </td>
-              <td class="py-4 px-6">
+              <td class="py-4 px-4">
                 <div class="flex items-center justify-end space-x-2">
+                  <button
+                    @click="openEditModal(jugador)"
+                    class="p-2 text-notion-muted hover:text-primary hover:bg-primary/10 rounded-lg transition-colors"
+                    title="Editar jugador"
+                  >
+                    <PencilIcon class="w-4 h-4" />
+                  </button>
                   <button
                     @click="confirmDeleteJugador(jugador)"
                     class="p-2 text-notion-muted hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
@@ -443,111 +500,13 @@ const handleDeleteCancel = () => {
               </td>
             </tr>
             <tr v-if="jugadoresFiltrados().length === 0">
-              <td colspan="7" class="py-12 text-center text-notion-muted text-sm">
+              <td colspan="7" class="py-12 px-4 text-center text-notion-muted text-sm">
                 No hay jugadores que coincidan con los filtros actuales.
               </td>
             </tr>
           </tbody>
         </table>
       </div>
-    </div>
-  </div>
-
-  <div
-    v-if="showCreateModal"
-    class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
-    @click.self="closeCreateModal"
-  >
-    <div class="bg-white rounded-xl max-w-lg w-full p-6 max-h-[90vh] overflow-y-auto">
-      <div class="flex items-start justify-between gap-4 mb-6">
-        <div>
-          <h2 class="text-xl font-semibold text-notion-text">Nuevo jugador</h2>
-          <p class="text-sm text-notion-muted mt-1">
-            Crea un perfil manual sin necesidad de que el jugador tenga cuenta.
-          </p>
-        </div>
-        <button
-          type="button"
-          @click="closeCreateModal"
-          class="p-2 text-notion-muted hover:text-notion-text hover:bg-notion-bg rounded-lg transition-colors"
-        >
-          <XMarkIcon class="w-5 h-5" />
-        </button>
-      </div>
-
-      <form @submit.prevent="createJugador" class="space-y-5">
-        <div
-          v-if="formError"
-          class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
-        >
-          {{ formError }}
-        </div>
-
-        <div>
-          <label class="block text-sm font-medium text-notion-text mb-2">
-            Nombre
-          </label>
-          <input
-            v-model="form.nombre"
-            type="text"
-            required
-            class="input"
-            placeholder="Nombre completo del jugador"
-          />
-        </div>
-
-        <div>
-          <label class="block text-sm font-medium text-notion-text mb-2">
-            Equipo
-          </label>
-          <select v-model="form.equipo_id" required class="input">
-            <option value="">Selecciona un equipo</option>
-            <option v-for="equipo in equipos" :key="equipo.id" :value="equipo.id">
-              {{ equipo.nombre }}
-            </option>
-          </select>
-          <p class="text-xs text-notion-muted mt-2">
-            La asignacion a equipo es obligatoria para este alta manual.
-          </p>
-        </div>
-
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label class="block text-sm font-medium text-notion-text mb-2">
-              Posicion
-            </label>
-            <select v-model="form.posicion" class="input">
-              <option value="">Sin especificar</option>
-              <option v-for="posicion in posiciones" :key="posicion" :value="posicion">
-                {{ posicion }}
-              </option>
-            </select>
-          </div>
-
-          <div>
-            <label class="block text-sm font-medium text-notion-text mb-2">
-              Numero de camiseta
-            </label>
-            <input
-              v-model="form.numero_camiseta"
-              type="number"
-              min="0"
-              step="1"
-              class="input"
-              placeholder="Ej. 10"
-            />
-          </div>
-        </div>
-
-        <div class="flex items-center justify-end gap-3 pt-2">
-          <button type="button" @click="closeCreateModal" class="btn-outline">
-            Cancelar
-          </button>
-          <button type="submit" :disabled="saving" class="btn-primary min-w-[140px]">
-            {{ saving ? "Guardando..." : "Crear jugador" }}
-          </button>
-        </div>
-      </form>
     </div>
   </div>
 
@@ -562,4 +521,122 @@ const handleDeleteCancel = () => {
     @cancel="handleDeleteCancel"
     @close="handleDeleteCancel"
   />
+
+  <Teleport to="body">
+    <Transition
+      enter-active-class="transition duration-200 ease-out"
+      enter-from-class="opacity-0"
+      enter-to-class="opacity-100"
+      leave-active-class="transition duration-150 ease-in"
+      leave-from-class="opacity-100"
+      leave-to-class="opacity-0"
+    >
+      <div
+        v-if="showEditModal"
+        class="fixed inset-0 z-[9999] flex items-center justify-center p-4"
+      >
+        <div
+          class="absolute inset-0 bg-black/50 backdrop-blur-sm"
+          @click="closeEditModal"
+        ></div>
+
+        <div
+          class="relative w-full max-w-2xl rounded-xl bg-white shadow-2xl"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="editar-jugador-title"
+        >
+          <div class="flex items-start justify-between border-b border-notion-border p-6">
+            <div>
+              <h3 id="editar-jugador-title" class="text-lg font-semibold text-notion-text">
+                Editar jugador
+              </h3>
+              <p class="mt-1 text-sm text-notion-muted">
+                Actualiza nombre y apellidos, posicion y numero de camiseta.
+              </p>
+            </div>
+            <button
+              type="button"
+              class="rounded-lg p-2 text-notion-muted transition-colors hover:bg-notion-bg hover:text-notion-text"
+              @click="closeEditModal"
+              :disabled="savingEdit"
+              aria-label="Cerrar modal"
+            >
+              <XMarkIcon class="h-5 w-5" />
+            </button>
+          </div>
+
+          <form @submit.prevent="saveJugadorEdit" class="space-y-5 p-6">
+            <div v-if="editError" class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {{ editError }}
+            </div>
+
+            <div>
+              <label class="mb-2 block text-sm font-medium text-notion-text">
+                Nombre y apellidos
+              </label>
+              <input
+                v-model="editForm.nombre"
+                type="text"
+                class="input"
+                placeholder="Nombre completo del jugador"
+                :disabled="savingEdit"
+                required
+              />
+            </div>
+
+            <div class="grid gap-4 md:grid-cols-2">
+              <div>
+                <label class="mb-2 block text-sm font-medium text-notion-text">
+                  Posicion
+                </label>
+                <select
+                  v-model="editForm.posicion"
+                  class="input"
+                  :disabled="savingEdit"
+                >
+                  <option value="">Sin definir</option>
+                  <option v-for="posicion in posiciones" :key="posicion" :value="posicion">
+                    {{ posicion }}
+                  </option>
+                </select>
+              </div>
+
+              <div>
+                <label class="mb-2 block text-sm font-medium text-notion-text">
+                  Numero
+                </label>
+                <input
+                  v-model="editForm.numero_camiseta"
+                  type="number"
+                  min="0"
+                  class="input"
+                  placeholder="Ej. 10"
+                  :disabled="savingEdit"
+                />
+              </div>
+            </div>
+
+            <div class="flex justify-end gap-3 pt-2">
+              <button
+                type="button"
+                class="rounded-lg border border-notion-border px-4 py-2 text-sm font-medium text-notion-text transition-colors hover:bg-notion-bg"
+                @click="closeEditModal"
+                :disabled="savingEdit"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
+                :disabled="savingEdit"
+              >
+                {{ savingEdit ? "Guardando..." : "Guardar cambios" }}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </Transition>
+  </Teleport>
 </template>
