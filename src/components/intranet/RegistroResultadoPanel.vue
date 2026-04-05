@@ -330,13 +330,6 @@ function getDetalleSummary(rows = []) {
   );
 }
 
-function hasIncompleteDetalleRows(rows = []) {
-  return rows.some((row) => {
-    const goles = Number(row.goles) || 0;
-    const asistencias = Number(row.asistencias) || 0;
-    return (goles > 0 || asistencias > 0) && !row.jugador_id;
-  });
-}
 
 const handleSave = async () => {
   saveError.value = "";
@@ -373,17 +366,6 @@ const handleSave = async () => {
     return;
   }
 
-  if (hasIncompleteDetalleRows(detalleJugadoresLocal.value)) {
-    saveError.value =
-      "Selecciona un jugador en cada fila del equipo local que tenga goles o asistencias.";
-    return;
-  }
-
-  if (hasIncompleteDetalleRows(detalleJugadoresVisitante.value)) {
-    saveError.value =
-      "Selecciona un jugador en cada fila del equipo visitante que tenga goles o asistencias.";
-    return;
-  }
 
   if (!form.value.confirmado) {
     saveError.value = "Debes confirmar que la información es correcta.";
