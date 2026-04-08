@@ -3,13 +3,11 @@ import { ref, computed } from "vue";
 import { useAuthStore } from "@/stores/auth";
 import ClasificacionTable from "@/components/intranet/ClasificacionTable.vue";
 import CalendarioIntranet from "@/components/intranet/CalendarioIntranet.vue";
-import RankingsPage from "@/pages/public/RankingsPage.vue";
 import TournamentBracket from "@/components/intranet/TournamentBracket.vue";
 import {
   SparklesIcon,
   CheckCircleIcon,
   ShieldCheckIcon,
-  UserGroupIcon,
 } from "@heroicons/vue/24/outline";
 
 const authStore = useAuthStore();
@@ -21,7 +19,6 @@ const tabs = [
     label: "Calendario y Próximos Partidos",
     icon: CheckCircleIcon,
   },
-  { id: "rankings", label: "Rankings de Jugadores", icon: UserGroupIcon },
   { id: "torneo", label: "Torneo", icon: SparklesIcon },
 ];
 
@@ -95,7 +92,7 @@ const userRoleLabel = computed(() => {
             </h1>
             <p class="text-lg text-white/80 max-w-xl leading-relaxed">
               Accede a toda la información de la competición: clasificación,
-              calendario de partidos, rankings de jugadores y torneo.
+              calendario de partidos y torneo.
             </p>
           </div>
 
@@ -233,28 +230,6 @@ const userRoleLabel = computed(() => {
             class="bg-gradient-to-br from-notion-bg/60 to-primary-50/30 rounded-2xl border border-notion-border/40 p-8 backdrop-blur-sm"
           >
             <CalendarioIntranet />
-          </div>
-        </div>
-
-        <!-- Rankings -->
-        <div v-show="activeTab === 'rankings'" class="tab-section">
-          <div class="mb-8">
-            <div class="flex items-center gap-3 mb-3">
-              <span class="w-1 h-6 bg-primary rounded-full"></span>
-              <h2 class="text-3xl md:text-4xl font-bold text-notion-text">
-                Rankings de Jugadores
-              </h2>
-            </div>
-            <p class="text-notion-muted max-w-2xl">
-              Consulta el rendimiento de los jugadores según las estadísticas
-              registradas en cada partido.
-            </p>
-          </div>
-
-          <div
-            class="bg-gradient-to-br from-notion-bg/60 to-secondary-50/20 rounded-2xl border border-notion-border/40 p-8 backdrop-blur-sm overflow-hidden"
-          >
-            <RankingsPage :hide-header="true" />
           </div>
         </div>
 

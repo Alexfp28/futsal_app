@@ -7,14 +7,13 @@ import { useCountUp } from "@/composables/useCountUp";
 import { useRouteRefresh } from "@/composables/useRouteRefresh";
 import {
   SparklesIcon,
-  UsersIcon,
   TrophyIcon,
   HeartIcon,
   CalendarIcon,
   ChartBarIcon,
   UserPlusIcon,
   PlusCircleIcon,
-  ArrowRightIcon,
+  BellAlertIcon,
   ClockIcon,
 } from "@heroicons/vue/24/outline";
 
@@ -25,7 +24,6 @@ const loading = ref(true);
 const stats = ref({ equipos: 0, jugadores: 0, partidos: 0 });
 const proximosPartidos = ref([]);
 const clasificacion = ref([]);
-const jugadoresLibres = ref([]);
 const imageErrors = ref({});
 
 // Animaciones
@@ -84,13 +82,6 @@ const loadIdentidad = async () => {
 
     clasificacion.value = clasificacionData || [];
 
-    // Cargar jugadores libres (primeros 4)
-    const { data: jugadoresData } = await supabase
-      .from("jugadores_libres")
-      .select("*")
-      .limit(4);
-
-    jugadoresLibres.value = jugadoresData || [];
   } catch (e) {
     console.error("Error cargando datos:", e);
     // Usar valores por defecto
@@ -121,12 +112,6 @@ const formatFecha = (fecha) => {
     hour: "2-digit",
     minute: "2-digit",
   });
-};
-
-// Obtener nivel como estrellas
-const getEstrellas = (nivel) => {
-  if (!nivel) return [];
-  return Array.from({ length: 5 }, (_, i) => i < nivel);
 };
 
 const getEquipoLogo = (equipo) => equipo?.logo_url || equipo?.escudo_url || null;
@@ -806,85 +791,6 @@ watch(() => isVisible('stats'), (visible) => {
       </div>
     </section>
 
-    <!-- Jugadores Libres Section -->
-    <section
-      :ref="(el) => observe(el, 'jugadores')"
-      class="py-24 bg-white transition-all duration-700 ease-out"
-      :class="
-        isVisible('jugadores')
-          ? 'opacity-100 translate-y-0'
-          : 'opacity-0 translate-y-8'
-      "
-    >
-      <div class="page-container">
-        <div class="flex items-center justify-between mb-12">
-          <div>
-            <span class="section-eyebrow">
-              <span class="w-8 h-0.5 bg-primary"></span>
-              Disponibles
-            </span>
-            <h2 class="text-4xl font-bold text-notion-text">Jugadores Libres</h2>
-          </div>
-          <router-link
-            to="/jugadores-libres"
-            class="flex items-center gap-1 text-primary hover:text-primary-600 font-semibold"
-          >
-            Ver todos <ArrowRightIcon class="w-4 h-4" />
-          </router-link>
-        </div>
-
-        <div
-          v-if="jugadoresLibres.length > 0"
-          class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6"
-        >
-          <div
-            v-for="(jugador, i) in jugadoresLibres"
-            :key="jugador.id"
-            :style="{ transitionDelay: `${i * 75}ms` }"
-            class="group relative bg-white rounded-2xl border border-notion-border/60 hover:border-secondary/60 hover:shadow-[0_8px_25px_rgba(246,236,21,0.15)] p-5 transition-all duration-300 hover:-translate-y-1"
-          >
-            <!-- Avatar con gradiente -->
-            <div
-              class="w-14 h-14 rounded-2xl bg-gradient-to-br from-primary to-primary-700 flex items-center justify-center text-white text-xl font-bold mb-4 group-hover:shadow-[0_0_20px_rgba(22,75,240,0.35)] transition-shadow duration-300"
-            >
-              {{ jugador.nombre?.charAt(0) || "J" }}
-            </div>
-
-            <!-- Nombre y posición -->
-            <h4 class="font-bold text-notion-text">{{ jugador.nombre }}</h4>
-            <p class="text-xs text-notion-muted mt-0.5">{{ jugador.posicion }}</p>
-
-            <!-- Estrellas y edad -->
-            <div
-              class="flex items-center justify-between mt-3 pt-3 border-t border-notion-border/50"
-            >
-              <span v-if="jugador.edad" class="text-xs text-notion-muted">
-                {{ jugador.edad }} años
-              </span>
-              <div v-if="jugador.nivel" class="flex gap-0.5">
-                <span
-                  v-for="(filled, idx) in getEstrellas(jugador.nivel)"
-                  :key="idx"
-                  :class="
-                    filled
-                      ? 'text-secondary drop-shadow-[0_0_3px_rgba(246,236,21,0.8)]'
-                      : 'text-gray-200'
-                  "
-                  class="text-base"
-                  >★</span
-                >
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div v-else class="text-center py-8 text-notion-muted">
-          <UsersIcon class="w-12 h-12 mx-auto mb-3 opacity-50" />
-          <p>No hay jugadores libres actualmente</p>
-        </div>
-      </div>
-    </section>
-
     <!-- CTA Final Section -->
     <section
       :ref="(el) => observe(el, 'cta-final')"
@@ -950,13 +856,13 @@ watch(() => isVisible('stats'), (visible) => {
             <span class="text-sm text-center">Crear Equipo</span>
           </router-link>
 
-          <!-- Ver Jugadores Libres -->
+          <!-- Ver Avisos -->
           <router-link
-            to="/jugadores-libres"
+            to="/avisos"
             class="flex flex-col items-center justify-center gap-2 bg-white/10 backdrop-blur-sm border border-white/20 text-white font-semibold rounded-2xl p-6 hover:bg-white/20 transition-all duration-300 hover:-translate-y-1"
           >
-            <UsersIcon class="w-7 h-7" />
-            <span class="text-sm text-center">Jugadores Libres</span>
+            <BellAlertIcon class="w-7 h-7" />
+            <span class="text-sm text-center">Avisos Oficiales</span>
           </router-link>
         </div>
       </div>

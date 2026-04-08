@@ -1,67 +1,154 @@
 <script setup>
 import { ref } from "vue";
-import { useScrollReveal } from "@/composables/useScrollReveal";
 import {
-  BookOpenIcon,
-  ClipboardDocumentCheckIcon,
   TrophyIcon,
   UserGroupIcon,
+  BookOpenIcon,
+  ShieldCheckIcon,
+  ClipboardDocumentCheckIcon,
+  ScaleIcon,
+  ClockIcon,
+  ExclamationTriangleIcon,
+  HandRaisedIcon,
+  MegaphoneIcon,
+  StarIcon,
   ChevronDownIcon,
+  EnvelopeIcon,
 } from "@heroicons/vue/24/outline";
 
 const secciones = [
   {
-    titulo: "Objetivos de la Organización",
+    titulo: "1. Objetivo de la competición",
     icono: TrophyIcon,
     contenido: [
-      "Fomentar la práctica del fútbol sala entre jóvenes de La Vall d'Uixó",
-      "Crear un ambiente de respeto, compañerismo y fair play",
-      "Facilitar la organización de partidos y competiciones",
-      "Promover valores deportivos y personales en todos los participantes",
+      "Fomentar la práctica del fútbol sala en La Vall d'Uixó",
+      "Crear un entorno de respeto, compañerismo y fair play",
+      "Facilitar la organización de partidos de forma autónoma",
     ],
   },
   {
-    titulo: "Estructura de los Equipos",
+    titulo: "2. Equipos y organización",
     icono: UserGroupIcon,
     contenido: [
-      "Cada equipo debe tener un mínimo de 5 jugadores y un máximo de 12",
-      "Es obligatorio designar un capitán que será el interlocutor con la organización",
-      "Los equipos deben tener un nombre y colores distintivos",
-      "Los jugadores pueden cambiar de equipo solo en periodos de fichajes establecidos",
+      "Cada equipo tendrá entre 5 y 12 jugadores",
+      "Cada equipo contará con un capitán (y opcional segundo capitán)",
+      "El capitán es responsable de: registrar el equipo, inscribir y actualizar jugadores, la comunicación con la organización y el comportamiento del equipo",
+      "Cada equipo deberá facilitar: nombre del equipo, colores, capitanes e identificación de jugadores",
     ],
   },
   {
-    titulo: "Desarrollo de los Partidos",
-    icono: BookOpenIcon,
-    contenido: [
-      "Los partidos tendrán una duración de 40 minutos (2 tiempos de 20 min)",
-      "Se aplicarán las reglas oficiales de fútbol sala de la RFEF",
-      "Es obligatorio presentar el DNI antes de cada partido",
-      "Los equipos deben presentarse con 15 minutos de antelación",
-    ],
-  },
-  {
-    titulo: "Sanciones y Penalizaciones",
+    titulo: "3. Gestión de jugadores",
     icono: ClipboardDocumentCheckIcon,
     contenido: [
-      "La acumulación de 5 tarjetas amarillas implica 1 partido de sanción",
-      "La tarjeta roja directa conlleva 1-3 partidos de sanción según gravedad",
-      "Actitudes antideportivas pueden derivar en expulsión de la organización",
-      "Las reclamaciones deben presentarse por escrito en un plazo de 48 horas",
+      "Cada jugador solo podrá participar con un único equipo durante la temporada",
+      "Las plantillas estarán abiertas durante toda la competición",
+      "Se podrán incorporar nuevos jugadores en cualquier momento, siempre que no hayan participado previamente en otro equipo",
+      "Toda incorporación debe ser comunicada y aprobada antes del partido",
+      "No se permite la participación de jugadores no registrados",
+    ],
+  },
+  {
+    titulo: "Control de participación",
+    icono: ShieldCheckIcon,
+    contenido: [
+      "Solo podrán jugar los jugadores registrados previamente",
+      "La alineación indebida supondrá la pérdida del partido",
+      "La organización podrá solicitar la identificación de jugadores en cualquier momento",
+    ],
+  },
+  {
+    titulo: "4. Normas básicas de juego",
+    icono: BookOpenIcon,
+    contenido: [
+      "No hay fuera de juego",
+      "Saques de banda y esquina con el pie",
+      "Saque de centro tras gol",
+      "Distancia mínima en faltas: 5 metros",
+      "Portero: no puede coger con la mano un pase con el pie de un compañero",
+      "Portero: puede salir del área y jugar como un jugador más",
+      "Portero: puede jugar en campo rival",
+      "Solo se señalarán faltas claras. Empujones, zancadillas, manos y juego peligroso serán sancionados",
+      "En caso de duda, no se sanciona",
+    ],
+  },
+  {
+    titulo: "5. Régimen de arbitraje",
+    icono: ScaleIcon,
+    contenido: [
+      "La competición no dispone de árbitros asignados ni contratados",
+      "CON ÁRBITRO (voluntario): Solo si ambos capitanes aceptan antes del partido. Las decisiones del árbitro son finales y no se discuten. No se puede cambiar el régimen una vez iniciado el partido. El árbitro voluntario no representa a la organización",
+      "SIN ÁRBITRO (régimen habitual): Partido autogestionado. Los jugadores señalan faltas claras. En caso de conflicto, deciden los capitanes. Si no hay acuerdo, la acción no se sanciona y el juego continúa",
+    ],
+  },
+  {
+    titulo: "6. Desarrollo de los partidos",
+    icono: ClockIcon,
+    contenido: [
+      "Duración: 40 minutos (2 partes de 20 minutos)",
+      "Los partidos comenzarán y finalizarán según el horario establecido",
+      "El tiempo no se recupera bajo ningún concepto",
+      "Los equipos deben estar listos a la hora de inicio",
+      "Solo podrán participar jugadores previamente registrados",
+    ],
+  },
+  {
+    titulo: "7. Jefe de jornada",
+    icono: MegaphoneIcon,
+    contenido: [
+      "No actúa como árbitro",
+      "No interviene en decisiones de juego",
+      "Solo interviene en caso de conflicto grave o violencia",
+      "Puede detener el partido si es necesario",
+    ],
+  },
+  {
+    titulo: "8. Incomparecencias",
+    icono: ExclamationTriangleIcon,
+    contenido: [
+      "No presentarse implica derrota por 3-0",
+      "La reincidencia podrá suponer sanciones adicionales o expulsión",
+    ],
+  },
+  {
+    titulo: "9. Conducta y disciplina",
+    icono: HandRaisedIcon,
+    contenido: [
+      "FutsalVall es una competición sin árbitros. Se exige respeto, honestidad y sentido común",
+      "Respeto a rivales y compañeros en todo momento",
+      "Prohibidos insultos y agresiones",
+      "Los capitanes median en conflictos",
+      "Conductas no permitidas: insultos reiterados, agresiones o amenazas, provocar conflictos, intentar aprovecharse de la ausencia de árbitro",
+      "Sanciones: advertencia, suspensión o expulsión",
+    ],
+  },
+  {
+    titulo: "10. Autoridad",
+    icono: ShieldCheckIcon,
+    contenido: [
+      "La organización tendrá la última palabra en cualquier conflicto",
+      "La organización podrá intervenir en situaciones no previstas",
+    ],
+  },
+  {
+    titulo: "11. Comunicación",
+    icono: EnvelopeIcon,
+    contenido: [
+      "Toda comunicación oficial se realizará a través de la web",
+      "No se gestionarán incidencias por WhatsApp",
+      "Canal de contacto oficial para incidencias: futsalvall@gmail.com",
+    ],
+  },
+  {
+    titulo: "12. Filosofía de la competición",
+    icono: StarIcon,
+    contenido: [
+      "Se prioriza el respeto, el sentido común y el fair play",
+      "El objetivo es jugar, no discutir",
+      "Todos los participantes son responsables de que la competición sea un espacio positivo",
     ],
   },
 ];
 
-const reglasBasicas = [
-  "El campo de juego será el designado por la organización para cada partido",
-  "El balón será proporcionado por la organización o el equipo local",
-  "Los jugadores deben llevar calzado adecuado para superficie dura",
-  "No está permitido el uso de joyas, relojes u objetos que puedan causar lesiones",
-  "Los cambios son ilimitados y se realizan por la zona de cambios",
-  "El portero puede tocar el balón con las manos dentro del área",
-];
-
-const { observe, isVisible } = useScrollReveal({ threshold: 0.12 });
 const openSection = ref(secciones[0].titulo);
 
 const toggleSection = (titulo) => {
@@ -74,8 +161,7 @@ const toggleSection = (titulo) => {
     <div class="mb-8">
       <h1 class="page-title">Reglamento Oficial</h1>
       <p class="page-subtitle">
-        Normas y reglas que rigen los partidos y la organización de FutSal La
-        Vall
+        Normas y reglas que rigen los partidos y la organización de FutsalVall
       </p>
     </div>
 
@@ -115,9 +201,7 @@ const toggleSection = (titulo) => {
           >
             <component :is="seccion.icono" class="w-5 h-5 text-primary" />
           </div>
-          <span class="flex-1 font-semibold text-notion-text">{{
-            seccion.titulo
-          }}</span>
+          <span class="flex-1 font-semibold text-notion-text">{{ seccion.titulo }}</span>
           <ChevronDownIcon
             class="w-4 h-4 text-notion-muted transition-transform duration-300"
             :class="{ 'rotate-180': openSection === seccion.titulo }"
@@ -136,9 +220,7 @@ const toggleSection = (titulo) => {
               :key="index"
               class="flex items-start gap-2"
             >
-              <span
-                class="w-1.5 h-1.5 bg-primary rounded-full mt-2 flex-shrink-0"
-              ></span>
+              <span class="w-1.5 h-1.5 bg-primary rounded-full mt-2 flex-shrink-0"></span>
               <span class="text-notion-muted text-sm">{{ item }}</span>
             </li>
           </ul>
@@ -146,56 +228,21 @@ const toggleSection = (titulo) => {
       </div>
     </div>
 
-    <!-- Reglas básicas -->
-    <div
-      ref="(el) => observe(el, 'rules')"
-      class="mt-8 card p-6"
-      :class="{ 'opacity-100 translate-y-0': isVisible('rules'), 'opacity-0 translate-y-8': !isVisible('rules') }"
-    >
-      <h2 class="text-xl font-semibold text-notion-text mb-4">
-        Reglas Básicas de Juego
-      </h2>
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div
-          v-for="(regla, index) in reglasBasicas"
-          :key="index"
-          class="flex items-start space-x-3 p-3 bg-notion-bg rounded-lg"
-        >
-          <span
-            class="w-6 h-6 bg-primary text-white rounded-full flex items-center justify-center text-xs font-medium flex-shrink-0"
-          >
-            {{ index + 1 }}
-          </span>
-          <span class="text-sm text-notion-text">{{ regla }}</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- Nota importante -->
-    <div
-      ref="(el) => observe(el, 'note')"
-      class="mt-8 p-6 bg-secondary/10 rounded-xl border border-secondary/20"
-      :class="{ 'opacity-100 translate-y-0': isVisible('note'), 'opacity-0 translate-y-8': !isVisible('note') }"
-    >
-      <h3 class="font-semibold text-notion-text mb-2">Nota Importante</h3>
-      <p class="text-sm text-notion-muted">
-        Este reglamento puede ser modificado por la organización en cualquier
-        momento. Los cambios serán comunicados a todos los equipos inscritos con
-        al menos 7 días de antelación a su entrada en vigor. Es responsabilidad
-        de cada jugador y capitán estar al día de las normas.
+    <!-- Contacto oficial -->
+    <div class="mt-8 p-6 bg-secondary/10 rounded-xl border border-secondary/20">
+      <h3 class="font-semibold text-notion-text mb-2">Contacto oficial</h3>
+      <p class="text-sm text-notion-muted mb-3">
+        Para cualquier incidencia o consulta relacionada con la competición,
+        utiliza exclusivamente el correo oficial. No se gestionan incidencias
+        por WhatsApp ni por otros canales.
       </p>
-    </div>
-
-    <!-- Descarga PDF -->
-    <div
-      ref="(el) => observe(el, 'pdf')"
-      class="mt-8 text-center"
-      :class="{ 'opacity-100 translate-y-0': isVisible('pdf'), 'opacity-0 translate-y-8': !isVisible('pdf') }"
-    >
-      <p class="text-sm text-notion-muted mb-4">
-        ¿Quieres tener el reglamento siempre a mano?
-      </p>
-      <button class="btn-outline">📄 Descargar PDF del Reglamento</button>
+      <a
+        href="mailto:futsalvall@gmail.com"
+        class="inline-flex items-center gap-2 px-4 py-2 bg-primary text-white font-semibold rounded-lg hover:bg-primary-700 transition-colors text-sm"
+      >
+        <EnvelopeIcon class="w-4 h-4" />
+        futsalvall@gmail.com
+      </a>
     </div>
   </div>
 </template>
@@ -204,10 +251,10 @@ const toggleSection = (titulo) => {
 .accordion-body {
   max-height: 0;
   overflow: hidden;
-  transition: max-height 300ms cubic-bezier(0.4, 0, 0.2, 1);
+  transition: max-height 400ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .accordion-body.open {
-  max-height: 600px;
+  max-height: 800px;
 }
 </style>

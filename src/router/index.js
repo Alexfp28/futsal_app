@@ -4,8 +4,6 @@ import { useAuthStore } from "@/stores/auth";
 // Páginas públicas
 const IdentidadPage = () => import("@/pages/public/IdentidadPage.vue");
 const EquiposPage = () => import("@/pages/public/EquiposPage.vue");
-const JugadoresLibresPage = () =>
-  import("@/pages/public/JugadoresLibresPage.vue");
 const ReglamentoPage = () => import("@/pages/public/ReglamentoPage.vue");
 const CodigoConductaPage = () =>
   import("@/pages/public/CodigoConductaPage.vue");
@@ -15,7 +13,7 @@ const RankingsPage = () => import("@/pages/public/RankingsPage.vue");
 const PalmaresPage = () => import("@/pages/public/PalmaresPage.vue");
 const SugerenciasPage = () => import("@/pages/public/SugerenciasPage.vue");
 const TraspasosPage = () => import("@/pages/public/TraspasosPage.vue");
-const InvitacionesPage = () => import("@/pages/public/InvitacionesPage.vue");
+const AvisosPage = () => import("@/pages/public/AvisosPage.vue");
 
 // Páginas de autenticación
 const LoginPage = () => import("@/pages/auth/LoginPage.vue");
@@ -27,6 +25,7 @@ const AdminEquipos = () => import("@/pages/admin/AdminEquipos.vue");
 const AdminJugadores = () => import("@/pages/admin/AdminJugadores.vue");
 const AdminPartidos = () => import("@/pages/admin/AdminPartidos.vue");
 const AdminGastos = () => import("@/pages/admin/AdminGastos.vue");
+const AdminAvisosPage = () => import("@/pages/admin/AdminAvisosPage.vue");
 
 // Páginas de capitán
 const CapitanDashboard = () => import("@/pages/capitan/CapitanDashboard.vue");
@@ -55,12 +54,6 @@ const routes = [
     name: "equipos",
     component: EquiposPage,
     meta: { title: "Equipos - FutSal La Vall" },
-  },
-  {
-    path: "/jugadores-libres",
-    name: "jugadores-libres",
-    component: JugadoresLibresPage,
-    meta: { title: "Jugadores Libres - FutSal La Vall" },
   },
   {
     path: "/reglamento",
@@ -121,16 +114,11 @@ const routes = [
     },
   },
   {
-    path: "/invitaciones",
-    name: "invitaciones",
-    component: InvitacionesPage,
-    meta: {
-      title: "Invitaciones - FutSal La Vall",
-      requiresAuth: true,
-      roles: ["admin", "capitan", "jugador"],
-    },
+    path: "/avisos",
+    name: "avisos",
+    component: AvisosPage,
+    meta: { title: "Avisos - FutSal La Vall" },
   },
-
   // Rutas de autenticación
   {
     path: "/login",
@@ -192,6 +180,16 @@ const routes = [
     component: AdminGastos,
     meta: {
       title: "Gestionar Gastos - FutSal La Vall",
+      requiresAuth: true,
+      roles: ["admin"],
+    },
+  },
+  {
+    path: "/admin/avisos",
+    name: "admin-avisos",
+    component: AdminAvisosPage,
+    meta: {
+      title: "Gestión Avisos - FutSal La Vall",
       requiresAuth: true,
       roles: ["admin"],
     },

@@ -136,12 +136,17 @@ const mainLinks = [
             </li>
             <li class="flex gap-3 items-start">
               <EnvelopeIcon class="w-5 h-5 text-secondary mt-0.5 flex-shrink-0" />
-              <a
-                href="mailto:info@futsallavall.es"
-                class="text-sm text-white/70 hover:text-secondary transition-colors"
-              >
-                info@futsallavall.es
-              </a>
+              <div>
+                <a
+                  href="mailto:futsalvall@gmail.com"
+                  class="text-sm text-secondary font-semibold hover:text-secondary-400 transition-colors"
+                >
+                  futsalvall@gmail.com
+                </a>
+                <p class="text-xs text-white/45 mt-0.5 leading-snug">
+                  Canal oficial para incidencias.<br />No se gestiona por WhatsApp.
+                </p>
+              </div>
             </li>
           </ul>
         </div>
