@@ -7,6 +7,7 @@ import {
   UserGroupIcon,
   CalendarIcon,
   CurrencyEuroIcon,
+  BellAlertIcon,
 } from "@heroicons/vue/24/outline";
 
 const stats = ref({
@@ -80,6 +81,12 @@ const quickActions = [
     href: "/admin/gastos",
     icon: CurrencyEuroIcon,
     color: "bg-green-100 text-green-600",
+  },
+  {
+    name: "Gestionar Avisos",
+    href: "/admin/avisos",
+    icon: BellAlertIcon,
+    color: "bg-red-100 text-red-500",
   },
 ];
 </script>

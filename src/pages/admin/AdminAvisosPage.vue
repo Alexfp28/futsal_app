@@ -21,7 +21,6 @@ const form = ref({
   titulo: "",
   contenido: "",
   tipo: "info",
-  visible: true,
 });
 
 const tipoOpciones = [
@@ -74,14 +73,14 @@ const handleSubmit = async () => {
       titulo: form.value.titulo.trim(),
       contenido: form.value.contenido.trim(),
       tipo: form.value.tipo,
-      visible: form.value.visible,
+      visible: true,
       created_by: authStore.user?.id,
     });
 
     if (error) throw error;
 
     // Reset formulario
-    form.value = { titulo: "", contenido: "", tipo: "info", visible: true };
+    form.value = { titulo: "", contenido: "", tipo: "info" };
     await loadComunicados();
   } catch (e) {
     console.error("Error creando comunicado:", e);
@@ -156,27 +155,13 @@ onMounted(loadComunicados);
           ></textarea>
         </div>
 
-        <div class="flex flex-wrap gap-4">
-          <div class="flex-1 min-w-36">
-            <label class="block text-sm font-medium text-notion-text mb-1">Tipo</label>
-            <select v-model="form.tipo" class="input w-full" :disabled="saving">
-              <option v-for="op in tipoOpciones" :key="op.value" :value="op.value">
-                {{ op.label }}
-              </option>
-            </select>
-          </div>
-
-          <div class="flex items-end pb-1">
-            <label class="flex items-center gap-2 cursor-pointer select-none">
-              <input
-                v-model="form.visible"
-                type="checkbox"
-                class="w-4 h-4 accent-primary"
-                :disabled="saving"
-              />
-              <span class="text-sm font-medium text-notion-text">Publicar inmediatamente</span>
-            </label>
-          </div>
+        <div>
+          <label class="block text-sm font-medium text-notion-text mb-1">Tipo</label>
+          <select v-model="form.tipo" class="input w-full" :disabled="saving">
+            <option v-for="op in tipoOpciones" :key="op.value" :value="op.value">
+              {{ op.label }}
+            </option>
+          </select>
         </div>
 
         <p v-if="errorMsg" class="text-sm text-red-500">{{ errorMsg }}</p>

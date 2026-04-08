@@ -13,6 +13,7 @@ import {
   ArrowsRightLeftIcon,
   ArrowRightStartOnRectangleIcon,
   ChevronDownIcon,
+  BellAlertIcon,
 } from "@heroicons/vue/24/outline";
 
 const router = useRouter();
@@ -85,6 +86,7 @@ const userMenuItems = computed(() => {
     items.push({ name: "Mi Perfil", href: "/perfil", icon: UserIcon });
     if (authStore.isAdmin) {
       items.push({ name: "Panel Admin", href: "/admin", icon: ShieldCheckIcon });
+      items.push({ name: "Gestionar Avisos", href: "/admin/avisos", icon: BellAlertIcon });
     }
     if (authStore.isCapitan) {
       items.push({ name: "Panel Capitán", href: "/capitan" });
