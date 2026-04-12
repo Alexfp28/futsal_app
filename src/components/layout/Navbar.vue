@@ -218,7 +218,7 @@ watch(
 </script>
 
 <template>
-  <nav class="bg-[#0a1a5c] border-b-2 border-secondary sticky top-0 z-50">
+  <nav ref="navRef" class="bg-[#0a1a5c] border-b-2 border-secondary sticky top-0 z-50">
     <div class="max-w-9xl mx-auto px-4 sm:px-6 lg:px-8">
       <div class="flex justify-between h-16">
         <!-- Logo -->
@@ -239,7 +239,6 @@ watch(
         <!-- Desktop Navigation -->
         <div
           v-if="!isVerticalMenuView"
-          ref="navRef"
           class="hidden lg:flex items-center flex-1 px-2 py-2 gap-0.5"
         >
           <template v-for="item in visibleNavigation" :key="item.name">
