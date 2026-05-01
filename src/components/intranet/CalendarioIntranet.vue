@@ -466,7 +466,9 @@ const getGoogleMapsUrl = (lugar) => {
                       'w-2 h-2 rounded-full',
                       getPartidoColor(partido.estado),
                     ]"
-                    :title="`${formatTime(partido.fecha)} - ${partido.equipo_local?.nombre} vs ${partido.equipo_visitante?.nombre}`"
+                    :title="partido.estado === 'jugado' && partido.goles_local != null
+                      ? `${partido.equipo_local?.nombre} ${partido.goles_local} - ${partido.goles_visitante} ${partido.equipo_visitante?.nombre}`
+                      : `${formatTime(partido.fecha)} - ${partido.equipo_local?.nombre} vs ${partido.equipo_visitante?.nombre}`"
                   ></span>
                   <span
                     v-if="getPartidosForDay(day.date).length > 4"
@@ -538,7 +540,13 @@ const getGoogleMapsUrl = (lugar) => {
                 <span class="font-medium text-notion-text">
                   {{ partido.equipo_local?.nombre }}
                 </span>
-                <span class="text-xs text-notion-muted">vs</span>
+                <span
+                  v-if="partido.estado === 'jugado'"
+                  class="text-sm font-bold text-green-600 tabular-nums shrink-0"
+                >
+                  {{ partido.goles_local ?? '?' }} - {{ partido.goles_visitante ?? '?' }}
+                </span>
+                <span v-else class="text-xs text-notion-muted shrink-0">vs</span>
                 <span class="font-medium text-notion-text text-right">
                   {{ partido.equipo_visitante?.nombre }}
                 </span>
@@ -637,10 +645,21 @@ const getGoogleMapsUrl = (lugar) => {
             </div>
 
             <div class="mx-4 text-center">
-              <p class="text-2xl font-bold text-notion-muted">VS</p>
+              <template v-if="selectedPartido?.estado === 'jugado'">
+                <p class="text-4xl font-bold text-notion-text tabular-nums leading-none">
+                  {{ selectedPartido?.goles_local ?? '?' }}
+                </p>
+                <p class="text-xs text-notion-muted my-1">-</p>
+                <p class="text-4xl font-bold text-notion-text tabular-nums leading-none">
+                  {{ selectedPartido?.goles_visitante ?? '?' }}
+                </p>
+              </template>
+              <template v-else>
+                <p class="text-2xl font-bold text-notion-muted">VS</p>
+              </template>
               <span
                 :class="[
-                  'inline-flex items-center mt-2 px-2 py-1 rounded-full text-xs font-medium text-white',
+                  'inline-flex items-center mt-3 px-2 py-1 rounded-full text-xs font-medium text-white',
                   getPartidoColor(selectedPartido?.estado),
                 ]"
               >
